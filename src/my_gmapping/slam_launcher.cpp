@@ -178,106 +178,72 @@ std::unique_ptr<Mapping::ScanMatcher> CreateScanMatcherCorrelativeFPGA(
     /* Load settings for the register offsets */
     const pt::ptree& registerOffsetSettings =
         scanMatcherSettings.get_child("RegisterOffsets");
-    const std::string offsetApCtrl =
-        registerOffsetSettings.get<std::string>("AxiLiteSApCtrl");
-    const std::string offsetGIE =
-        registerOffsetSettings.get<std::string>("AxiLiteSGIE");
-    const std::string offsetIER =
-        registerOffsetSettings.get<std::string>("AxiLiteSIER");
-    const std::string offsetISR =
-        registerOffsetSettings.get<std::string>("AxiLiteSISR");
-    const std::string offsetNumOfScans =
-        registerOffsetSettings.get<std::string>("AxiLiteSNumOfScans");
-    const std::string offsetScanRangeMax =
-        registerOffsetSettings.get<std::string>("AxiLiteSScanRangeMax");
-    const std::string offsetScoreThreshold =
-        registerOffsetSettings.get<std::string>("AxiLiteSScoreThreshold");
-    const std::string offsetPoseX =
-        registerOffsetSettings.get<std::string>("AxiLiteSPoseX");
-    const std::string offsetPoseY =
-        registerOffsetSettings.get<std::string>("AxiLiteSPoseY");
-    const std::string offsetPoseTheta =
-        registerOffsetSettings.get<std::string>("AxiLiteSPoseTheta");
-    const std::string offsetMapSizeX =
-        registerOffsetSettings.get<std::string>("AxiLiteSMapSizeX");
-    const std::string offsetMapSizeY =
-        registerOffsetSettings.get<std::string>("AxiLiteSMapSizeY");
-    const std::string offsetMapMinX =
-        registerOffsetSettings.get<std::string>("AxiLiteSMapMinX");
-    const std::string offsetMapMinY =
-        registerOffsetSettings.get<std::string>("AxiLiteSMapMinY");
-    const std::string offsetWinX =
-        registerOffsetSettings.get<std::string>("AxiLiteSWinX");
-    const std::string offsetWinY =
-        registerOffsetSettings.get<std::string>("AxiLiteSWinY");
-    const std::string offsetWinTheta =
-        registerOffsetSettings.get<std::string>("AxiLiteSWinTheta");
-    const std::string offsetStepX =
-        registerOffsetSettings.get<std::string>("AxiLiteSStepX");
-    const std::string offsetStepY =
-        registerOffsetSettings.get<std::string>("AxiLiteSStepY");
-    const std::string offsetStepTheta =
-        registerOffsetSettings.get<std::string>("AxiLiteSStepTheta");
+
+    const auto offsetString = [&](const std::string& registerName) {
+        return registerOffsetSettings.get<std::string>(registerName); };
+
+    const auto offsetApCtrl = offsetString("AxiLiteSApCtrl");
+    const auto offsetGIE = offsetString("AxiLiteSGIE");
+    const auto offsetIER = offsetString("AxiLiteSIER");
+    const auto offsetISR = offsetString("AxiLiteSISR");
+    const auto offsetNumOfScans = offsetString("AxiLiteSNumOfScans");
+    const auto offsetScanRangeMax = offsetString("AxiLiteSScanRangeMax");
+    const auto offsetScoreThreshold = offsetString("AxiLiteSScoreThreshold");
+    const auto offsetPoseX = offsetString("AxiLiteSPoseX");
+    const auto offsetPoseY = offsetString("AxiLiteSPoseY");
+    const auto offsetPoseTheta = offsetString("AxiLiteSPoseTheta");
+    const auto offsetMapSizeX = offsetString("AxiLiteSMapSizeX");
+    const auto offsetMapSizeY = offsetString("AxiLiteSMapSizeY");
+    const auto offsetMapMinX = offsetString("AxiLiteSMapMinX");
+    const auto offsetMapMinY = offsetString("AxiLiteSMapMinY");
+    const auto offsetWinX = offsetString("AxiLiteSWinX");
+    const auto offsetWinY = offsetString("AxiLiteSWinY");
+    const auto offsetWinTheta = offsetString("AxiLiteSWinTheta");
+    const auto offsetStepX = offsetString("AxiLiteSStepX");
+    const auto offsetStepY = offsetString("AxiLiteSStepY");
+    const auto offsetStepTheta = offsetString("AxiLiteSStepTheta");
 
     /* Set the register offsets */
-    commonConfig.mAxiLiteSApCtrl = static_cast<std::uint32_t>(
-        std::stoul(offsetApCtrl, nullptr, 0));
-    commonConfig.mAxiLiteSGIE = static_cast<std::uint32_t>(
-        std::stoul(offsetGIE, nullptr, 0));
-    commonConfig.mAxiLiteSIER = static_cast<std::uint32_t>(
-        std::stoul(offsetIER, nullptr, 0));
-    commonConfig.mAxiLiteSISR = static_cast<std::uint32_t>(
-        std::stoul(offsetISR, nullptr, 0));
-    commonConfig.mAxiLiteSNumOfScans = static_cast<std::uint32_t>(
-        std::stoul(offsetNumOfScans, nullptr, 0));
-    commonConfig.mAxiLiteSScanRangeMax = static_cast<std::uint32_t>(
-        std::stoul(offsetScanRangeMax, nullptr, 0));
-    commonConfig.mAxiLiteSScoreThreshold = static_cast<std::uint32_t>(
-        std::stoul(offsetScoreThreshold, nullptr, 0));
-    commonConfig.mAxiLiteSPoseX = static_cast<std::uint32_t>(
-        std::stoul(offsetPoseX, nullptr, 0));
-    commonConfig.mAxiLiteSPoseY = static_cast<std::uint32_t>(
-        std::stoul(offsetPoseY, nullptr, 0));
-    commonConfig.mAxiLiteSPoseTheta = static_cast<std::uint32_t>(
-        std::stoul(offsetPoseTheta, nullptr, 0));
-    commonConfig.mAxiLiteSMapSizeX = static_cast<std::uint32_t>(
-        std::stoul(offsetMapSizeX, nullptr, 0));
-    commonConfig.mAxiLiteSMapSizeY = static_cast<std::uint32_t>(
-        std::stoul(offsetMapSizeY, nullptr, 0));
-    commonConfig.mAxiLiteSMapMinX = static_cast<std::uint32_t>(
-        std::stoul(offsetMapMinX, nullptr, 0));
-    commonConfig.mAxiLiteSMapMinY = static_cast<std::uint32_t>(
-        std::stoul(offsetMapMinY, nullptr, 0));
-    commonConfig.mAxiLiteSWinX = static_cast<std::uint32_t>(
-        std::stoul(offsetWinX, nullptr, 0));
-    commonConfig.mAxiLiteSWinY = static_cast<std::uint32_t>(
-        std::stoul(offsetWinY, nullptr, 0));
-    commonConfig.mAxiLiteSWinTheta = static_cast<std::uint32_t>(
-        std::stoul(offsetWinTheta, nullptr, 0));
-    commonConfig.mAxiLiteSStepX = static_cast<std::uint32_t>(
-        std::stoul(offsetStepX, nullptr, 0));
-    commonConfig.mAxiLiteSStepY = static_cast<std::uint32_t>(
-        std::stoul(offsetStepY, nullptr, 0));
-    commonConfig.mAxiLiteSStepTheta = static_cast<std::uint32_t>(
-        std::stoul(offsetStepTheta, nullptr, 0));
+    const auto toAddress = [](const std::string& value) {
+        return std::stoul(value, nullptr, 0); };
+
+    commonConfig.mAxiLiteSApCtrl = toAddress(offsetApCtrl);
+    commonConfig.mAxiLiteSGIE = toAddress(offsetGIE);
+    commonConfig.mAxiLiteSIER = toAddress(offsetIER);
+    commonConfig.mAxiLiteSISR = toAddress(offsetISR);
+    commonConfig.mAxiLiteSNumOfScans = toAddress(offsetNumOfScans);
+    commonConfig.mAxiLiteSScanRangeMax = toAddress(offsetScanRangeMax);
+    commonConfig.mAxiLiteSScoreThreshold = toAddress(offsetScoreThreshold);
+    commonConfig.mAxiLiteSPoseX = toAddress(offsetPoseX);
+    commonConfig.mAxiLiteSPoseY = toAddress(offsetPoseY);
+    commonConfig.mAxiLiteSPoseTheta = toAddress(offsetPoseTheta);
+    commonConfig.mAxiLiteSMapSizeX = toAddress(offsetMapSizeX);
+    commonConfig.mAxiLiteSMapSizeY = toAddress(offsetMapSizeY);
+    commonConfig.mAxiLiteSMapMinX = toAddress(offsetMapMinX);
+    commonConfig.mAxiLiteSMapMinY = toAddress(offsetMapMinY);
+    commonConfig.mAxiLiteSWinX = toAddress(offsetWinX);
+    commonConfig.mAxiLiteSWinY = toAddress(offsetWinY);
+    commonConfig.mAxiLiteSWinTheta = toAddress(offsetWinTheta);
+    commonConfig.mAxiLiteSStepX = toAddress(offsetStepX);
+    commonConfig.mAxiLiteSStepY = toAddress(offsetStepY);
+    commonConfig.mAxiLiteSStepTheta = toAddress(offsetStepTheta);
 
     /* Load the hardware-specific parameters */
-    const std::string scanMatcherName =
-        scanMatcherSettings.get<std::string>("Name");
-    const int maxNumOfScans =
-        scanMatcherSettings.get<int>("MaxNumOfScans");
-    const double mapResolution =
-        scanMatcherSettings.get<double>("MapResolution");
-    const int maxMapSizeX =
-        scanMatcherSettings.get<int>("MaxMapSizeX");
-    const int maxMapSizeY =
-        scanMatcherSettings.get<int>("MaxMapSizeY");
-    const int lowResolution =
-        scanMatcherSettings.get<int>("CoarseMapResolution");
-    const int mapBitWidth =
-        scanMatcherSettings.get<int>("MapBitWidth");
-    const int mapChunkWidth =
-        scanMatcherSettings.get<int>("MapChunkWidth");
+    const auto getString = [&](const std::string& configName) {
+        return scanMatcherSettings.get<std::string>(configName); };
+    const auto getInt = [&](const std::string& configName) {
+        return scanMatcherSettings.get<int>(configName); };
+    const auto getDouble = [&](const std::string& configName) {
+        return scanMatcherSettings.get<double>(configName); };
+
+    const auto scanMatcherName = getString("Name");
+    const auto maxNumOfScans = getInt("MaxNumOfScans");
+    const auto mapResolution = getDouble("MapResolution");
+    const auto maxMapSizeX = getInt("MaxMapSizeX");
+    const auto maxMapSizeY = getInt("MaxMapSizeY");
+    const auto lowResolution = getInt("CoarseMapResolution");
+    const auto mapBitWidth = getInt("MapBitWidth");
+    const auto mapChunkWidth = getInt("MapChunkWidth");
 
     commonConfig.mMaxNumOfScans = maxNumOfScans;
     commonConfig.mMapResolution = mapResolution;
@@ -287,51 +253,31 @@ std::unique_ptr<Mapping::ScanMatcher> CreateScanMatcherCorrelativeFPGA(
     commonConfig.mMapBitWidth = mapBitWidth;
     commonConfig.mMapChunkWidth = mapChunkWidth;
 
-    const std::string axiLiteSBaseAddress0 =
-        scanMatcherSettings.get<std::string>("AxiLiteSBaseAddress0");
-    const std::string axiLiteSAddressRange0 =
-        scanMatcherSettings.get<std::string>("AxiLiteSAddressRange0");
-    const std::string axiDmaBaseAddress0 =
-        scanMatcherSettings.get<std::string>("AxiDmaBaseAddress0");
-    const std::string axiDmaAddressRange0 =
-        scanMatcherSettings.get<std::string>("AxiDmaAddressRange0");
+    const auto axiLiteSBaseAddress0 = getString("AxiLiteSBaseAddress0");
+    const auto axiLiteSAddressRange0 = getString("AxiLiteSAddressRange0");
+    const auto axiDmaBaseAddress0 = getString("AxiDmaBaseAddress0");
+    const auto axiDmaAddressRange0 = getString("AxiDmaAddressRange0");
 
-    const std::string axiLiteSBaseAddress1 =
-        scanMatcherSettings.get<std::string>("AxiLiteSBaseAddress1");
-    const std::string axiLiteSAddressRange1 =
-        scanMatcherSettings.get<std::string>("AxiLiteSAddressRange1");
-    const std::string axiDmaBaseAddress1 =
-        scanMatcherSettings.get<std::string>("AxiDmaBaseAddress1");
-    const std::string axiDmaAddressRange1 =
-        scanMatcherSettings.get<std::string>("AxiDmaAddressRange1");
+    const auto axiLiteSBaseAddress1 = getString("AxiLiteSBaseAddress1");
+    const auto axiLiteSAddressRange1 = getString("AxiLiteSAddressRange1");
+    const auto axiDmaBaseAddress1 = getString("AxiDmaBaseAddress1");
+    const auto axiDmaAddressRange1 = getString("AxiDmaAddressRange1");
 
-    scanMatcherConfig0.mAxiLiteSBaseAddress = static_cast<std::uint32_t>(
-        std::stoul(axiLiteSBaseAddress0, nullptr, 0));
-    scanMatcherConfig0.mAxiLiteSAddressRange = static_cast<std::uint32_t>(
-        std::stoul(axiLiteSAddressRange0, nullptr, 0));
-    axiDmaConfig0.mBaseAddress = static_cast<std::uint32_t>(
-        std::stoul(axiDmaBaseAddress0, nullptr, 0));
-    axiDmaConfig0.mAddressRange = static_cast<std::uint32_t>(
-        std::stoul(axiDmaAddressRange0, nullptr, 0));
+    scanMatcherConfig0.mAxiLiteSBaseAddress = toAddress(axiLiteSBaseAddress0);
+    scanMatcherConfig0.mAxiLiteSAddressRange = toAddress(axiLiteSAddressRange0);
+    axiDmaConfig0.mBaseAddress = toAddress(axiDmaBaseAddress0);
+    axiDmaConfig0.mAddressRange = toAddress(axiDmaAddressRange0);
 
-    scanMatcherConfig1.mAxiLiteSBaseAddress = static_cast<std::uint32_t>(
-        std::stoul(axiLiteSBaseAddress1, nullptr, 0));
-    scanMatcherConfig1.mAxiLiteSAddressRange = static_cast<std::uint32_t>(
-        std::stoul(axiLiteSAddressRange1, nullptr, 0));
-    axiDmaConfig1.mBaseAddress = static_cast<std::uint32_t>(
-        std::stoul(axiDmaBaseAddress1, nullptr, 0));
-    axiDmaConfig1.mAddressRange = static_cast<std::uint32_t>(
-        std::stoul(axiDmaAddressRange1, nullptr, 0));
+    scanMatcherConfig1.mAxiLiteSBaseAddress = toAddress(axiLiteSBaseAddress1);
+    scanMatcherConfig1.mAxiLiteSAddressRange = toAddress(axiLiteSAddressRange1);
+    axiDmaConfig1.mBaseAddress = toAddress(axiDmaBaseAddress1);
+    axiDmaConfig1.mAddressRange = toAddress(axiDmaAddressRange1);
 
     /* Load the scan matching parameters */
-    const double searchRangeX =
-        scanMatcherSettings.get<double>("SearchRangeX");
-    const double searchRangeY =
-        scanMatcherSettings.get<double>("SearchRangeY");
-    const double searchRangeTheta =
-        scanMatcherSettings.get<double>("SearchRangeTheta");
-    const double scanRangeMax =
-        scanMatcherSettings.get<double>("ScanRangeMax");
+    const auto searchRangeX = getDouble("SearchRangeX");
+    const auto searchRangeY = getDouble("SearchRangeY");
+    const auto searchRangeTheta = getDouble("SearchRangeTheta");
+    const auto scanRangeMax = getDouble("ScanRangeMax");
 
     /* Create the real-time correlative-based scan matcher IP core interface */
     auto pScanMatcher = std::make_unique<Mapping::ScanMatcherCorrelativeFPGA>(
