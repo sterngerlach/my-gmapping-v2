@@ -254,53 +254,25 @@ ScanMatchingResultVector ScanMatcherCorrelativeFPGA::OptimizePoseCore(
 
         const auto& initialPose = queries[i].mInitialPose;
         const auto& gridMap = queries[i].mGridMap;
-        const int mapCols = gridMap.Cols();
-        const int mapRows = gridMap.Rows();
 
         /* Compute the sensor pose from the initial particle pose */
         const RobotPose2D<double> sensorPose =
             Compound(initialPose, scanData->RelativeSensorPose());
-
         /* Compute the minimum possible sensor pose */
         const RobotPose2D<double> minSensorPose {
             sensorPose.mX - stepX * winX,
             sensorPose.mY - stepY * winY,
             sensorPose.mTheta - stepTheta * winTheta };
 
-        /* Desired size of the grid map */
-        const int mapColsMax = this->mCommonConfig.mMaxMapSizeX;
-        const int mapRowsMax = this->mCommonConfig.mMaxMapSizeY;
-
-        /* Compute the center position of the cropped grid map */
-        const Point2D<int> desiredCenterIdx =
-            gridMap.PositionToIndex(sensorPose.mX, sensorPose.mY);
-        /* Use std::clamp() here since the above `centerIdx` could be
-         * out-of-bounds (the current particle is outside of the grid map) */
-        const Point2D<int> possibleIdxMin {
-            std::clamp(desiredCenterIdx.mX - mapColsMax, 0, mapCols - 1),
-            std::clamp(desiredCenterIdx.mY - mapRowsMax, 0, mapRows - 1) };
-        const Point2D<int> possibleIdxMax {
-            std::clamp(desiredCenterIdx.mX + mapColsMax, 1, mapCols),
-            std::clamp(desiredCenterIdx.mY + mapRowsMax, 1, mapRows) };
-        const Point2D<int> centerIdx {
-            (possibleIdxMax.mX + possibleIdxMin.mX) / 2,
-            (possibleIdxMax.mY + possibleIdxMin.mY) / 2 };
-
-        /* Crop the grid map around the center position */
-        const Point2D<int> idxMin {
-            std::max(centerIdx.mX - mapColsMax / 2, 0),
-            std::max(centerIdx.mY - mapRowsMax / 2, 0) };
-        const Point2D<int> idxMax {
-            std::min(centerIdx.mX + mapColsMax / 2, mapCols),
-            std::min(centerIdx.mY + mapRowsMax / 2, mapRows) };
-        const BoundingBox<int> boundingBox { idxMin, idxMax };
-
+        /* Compute the bounding box of the grid map */
+        const BoundingBox<int> boundingBox =
+            this->ComputeBoundingBox(gridMap, sensorPose);
         /* Compute the size of the cropped grid map */
         const Point2D<int> gridMapSize {
             boundingBox.Width(), boundingBox.Height() };
         /* Compute the minimum position of the cropped grid map */
         const Point2D<double> gridMapMinPos =
-            gridMap.IndexToPosition(idxMin.mY, idxMin.mX);
+            gridMap.IndexToPosition(boundingBox.mMin.mY, boundingBox.mMin.mX);
 
         /* Update the metrics and restart the timer */
         this->mMetrics.mInputSetupTime->Observe(timer.ElapsedMicro());
@@ -499,6 +471,54 @@ void ScanMatcherCorrelativeFPGA::InitializeCMAMemoryOutput(const int coreId)
         static_cast<std::uint32_t>(lengthInBytes));
 }
 
+/* Compute the bounding box of the grid map */
+BoundingBox<int> ScanMatcherCorrelativeFPGA::ComputeBoundingBox(
+    const GridMap& gridMap,
+    const RobotPose2D<double>& sensorPose) const
+{
+    /* Make sure that the block size is the multiple of 4 so that the
+     * size of the grid map `gridMap.Cols()` and `gridMap.Rows()` are
+     * also the multiples of 4 */
+    Assert(gridMap.BlockSize() % 4 == 0);
+
+    const int mapCols = gridMap.Cols();
+    const int mapRows = gridMap.Rows();
+
+    /* Desired size of the grid map */
+    const int mapColsMax = this->mCommonConfig.mMaxMapSizeX;
+    const int mapRowsMax = this->mCommonConfig.mMaxMapSizeY;
+
+    /* Compute the center position of the cropped grid map */
+    const Point2D<int> desiredCenterIdx =
+        gridMap.PositionToIndex(sensorPose.mX, sensorPose.mY);
+    /* Use std::clamp() here since the above `centerIdx` could be
+        * out-of-bounds (the current particle is outside of the grid map) */
+    const Point2D<int> possibleIdxMin {
+        std::clamp(desiredCenterIdx.mX - mapColsMax, 0, mapCols - 1),
+        std::clamp(desiredCenterIdx.mY - mapRowsMax, 0, mapRows - 1) };
+    const Point2D<int> possibleIdxMax {
+        std::clamp(desiredCenterIdx.mX + mapColsMax, 1, mapCols),
+        std::clamp(desiredCenterIdx.mY + mapRowsMax, 1, mapRows) };
+    const Point2D<int> centerIdx {
+        (possibleIdxMax.mX + possibleIdxMin.mX) / 2,
+        (possibleIdxMax.mY + possibleIdxMin.mY) / 2 };
+
+    /* Crop the grid map around the center position */
+    const auto alignBy4 = [](const int x) { return (x >> 2) << 2; };
+    const int colMin = alignBy4(centerIdx.mX - mapColsMax / 2);
+    const int rowMin = alignBy4(centerIdx.mY - mapRowsMax / 2);
+    const int colMax = alignBy4(centerIdx.mX + mapColsMax / 2);
+    const int rowMax = alignBy4(centerIdx.mY + mapRowsMax / 2);
+
+    const Point2D<int> idxMin { std::max(colMin, 0),
+                                std::max(rowMin, 0) };
+    const Point2D<int> idxMax { std::min(colMax, gridMap.Cols()),
+                                std::min(rowMax, gridMap.Rows()) };
+
+    /* Return the bounding box */
+    return BoundingBox<int> { idxMin, idxMax };
+}
+
 /* Set the scan matching parameters through AXI4-Lite slave interface */
 void ScanMatcherCorrelativeFPGA::SetParameterRegisters(
     const int coreId,
@@ -642,9 +662,9 @@ void ScanMatcherCorrelativeFPGA::SendGridMap(
         desiredBox.mMin.mX + chunkCols * chunkWidth,
         desiredBox.mMin.mY + desiredBox.Height() };
 
-    auto* pBuffer = this->mInputData[coreId].Ptr<std::uint8_t>() +
-                    sizeof(std::uint64_t);
-    gridMap.CopyValuesU8(pBuffer, boundingBox);
+    auto* pBuffer = this->mInputData[coreId].Ptr<std::uint32_t>() +
+                    sizeof(std::uint64_t) / sizeof(std::uint32_t);
+    gridMap.CopyValuesU8x4(pBuffer, boundingBox);
 
     /* Transfer the grid map using the AXI DMA IP core */
     const std::size_t transferLengthInBytes =
