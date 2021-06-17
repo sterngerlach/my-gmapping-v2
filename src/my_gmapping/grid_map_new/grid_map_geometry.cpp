@@ -33,6 +33,24 @@ void GridMapGeometry::Initialize(const double resolution,
     this->mPosOffset = Point2D<double>::Zero;
 }
 
+/* Initialize with the number of grid cells and the positional offset */
+void GridMapGeometry::Initialize(const double resolution,
+                                 const int rows, const int cols,
+                                 const double offsetX, const double offsetY)
+{
+    Assert(resolution > 0.0);
+    Assert(rows > 0);
+    Assert(cols > 0);
+
+    this->mResolution = resolution;
+    this->mRows = rows;
+    this->mCols = cols;
+    this->mWidth = resolution * cols;
+    this->mHeight = resolution * rows;
+    this->mPosOffset.mX = offsetX;
+    this->mPosOffset.mY = offsetY;
+}
+
 /* Reset to the initial state */
 void GridMapGeometry::Reset()
 {

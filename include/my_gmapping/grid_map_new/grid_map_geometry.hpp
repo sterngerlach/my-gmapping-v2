@@ -26,6 +26,10 @@ struct GridMapGeometry final
     /* Initialize with the number of grid cells */
     void Initialize(const double resolution,
                     const int rows, const int cols);
+    /* Initialize with the number of grid cells and the positional offset */
+    void Initialize(const double resolution,
+                    const int rows, const int cols,
+                    const double offsetX, const double offsetY);
     /* Reset to the initial state */
     void Reset();
 
