@@ -380,62 +380,56 @@ void GridMapBuilder::ExecuteScanMatching(
 
     const std::size_t numOfParticles = this->mParticles.size();
 
-    /* Setup scan matching outputs */
-    std::vector<double> particleWeights;
-    particleWeights.reserve(numOfParticles);
-    std::vector<RobotPose2D<double>> estimatedPoses;
-    estimatedPoses.reserve(numOfParticles);
+    /* Setup the scan matching queries */
+    ScanMatchingQueryVector queries;
 
-    /* Setup scan matching inputs */
-    std::vector<const GridMap*> particleMaps;
-    particleMaps.reserve(numOfParticles);
-    std::vector<RobotPose2D<double>> initialPoses;
-    initialPoses.reserve(numOfParticles);
-
-    for (std::size_t i = 0; i < numOfParticles; ++i) {
-        /* Use the grid map constructed from the latest scans
-         * instead of the entire grid map */
+    /* Use the grid map constructed from the latest scans
+     * instead of the entire grid map if specified */
+    for (std::size_t i = 0; i < numOfParticles; ++i)
         if (this->mUseLatestMap)
-            particleMaps.push_back(&this->mParticles[i].mLatestMap);
+            queries.emplace_back(this->mParticles[i].mLatestMap,
+                                 this->mParticles[i].mPose);
         else
-            particleMaps.push_back(&this->mParticles[i].mMap);
-
-        initialPoses.push_back(this->mParticles[i].mPose);
-    }
+            queries.emplace_back(this->mParticles[i].mMap,
+                                 this->mParticles[i].mPose);
 
     /* Execute scan matching for particles */
-    this->mScanMatcher->OptimizePose(
-        numOfParticles, particleMaps, scanData,
-        initialPoses, estimatedPoses, particleWeights);
+    const ScanMatchingResultVector results =
+        this->mScanMatcher->OptimizePose(queries, scanData);
 
     /* Update the total processing time for the scan matching */
     this->mMetrics.mScanMatchingTime->Observe(timer.ElapsedMicro());
     timer.Start();
 
-    /* Update the initial poses */
-    std::vector<RobotPose2D<double>> refinedInitialPoses;
-    refinedInitialPoses.reserve(numOfParticles);
+    /* Setup the scan matching queries */
+    ScanMatchingQueryVector finalQueries;
 
     for (std::size_t i = 0; i < numOfParticles; ++i)
-        refinedInitialPoses.push_back(estimatedPoses[i]);
+        if (this->mUseLatestMap)
+            finalQueries.emplace_back(this->mParticles[i].mLatestMap,
+                                      results[i].mEstimatedPose);
+        else
+            finalQueries.emplace_back(this->mParticles[i].mMap,
+                                      results[i].mEstimatedPose);
 
     /* Execute the final scan matching for particles */
-    this->mFinalScanMatcher->OptimizePose(
-        numOfParticles, particleMaps, scanData,
-        refinedInitialPoses, estimatedPoses, particleWeights);
+    const ScanMatchingResultVector finalResults =
+        this->mFinalScanMatcher->OptimizePose(finalQueries, scanData);
 
     /* Update the particle pose and trajectory node */
     for (std::size_t i = 0; i < numOfParticles; ++i) {
         /* Check the degeneration using the pose covariance */
+        const RobotPose2D<double> sensorPose = Compound(
+            finalResults[i].mEstimatedPose, scanData->RelativeSensorPose());
         const Eigen::Matrix3d covarianceMat =
             this->mCovarianceEstimator->ComputeCovariance(
-                this->mParticles[i].mMap, scanData, estimatedPoses[i]);
+                this->mParticles[i].mMap, scanData, sensorPose);
         const bool degenerationDetected =
             this->CheckDegeneration(covarianceMat);
 
         /* Update the particle pose if there is no degeneration */
         if (!degenerationDetected)
-            this->mParticles[i].mPose = estimatedPoses[i];
+            this->mParticles[i].mPose = finalResults[i].mEstimatedPose;
 
         /* Update the trajectory node */
         auto pNewNode = std::make_shared<TrajectoryNode>(
@@ -449,18 +443,20 @@ void GridMapBuilder::ExecuteScanMatching(
     timer.Start();
 
     /* Compute the log likelihood using the entire grid map if necessary */
-    if (this->mUseLatestMap) {
-        for (std::size_t i = 0; i < numOfParticles; ++i) {
+    std::vector<double> particleWeights;
+    particleWeights.resize(numOfParticles);
+
+    for (std::size_t i = 0; i < numOfParticles; ++i) {
+        if (this->mUseLatestMap) {
             /* Compute the sensor pose from the particle pose */
-            const RobotPose2D<double> sensorPose =
-                Compound(estimatedPoses[i], scanData->RelativeSensorPose());
-
+            const RobotPose2D<double> sensorPose = Compound(
+                finalResults[i].mEstimatedPose,
+                scanData->RelativeSensorPose());
             /* Compute the log likelihood */
-            const double logLikelihood = this->mLikelihoodFunc->Likelihood(
+            particleWeights[i] = this->mLikelihoodFunc->Likelihood(
                 this->mParticles[i].mMap, scanData, sensorPose);
-
-            /* Update the log likelihood */
-            particleWeights[i] = logLikelihood;
+        } else {
+            particleWeights[i] = finalResults[i].mLikelihood;
         }
     }
 
@@ -469,7 +465,7 @@ void GridMapBuilder::ExecuteScanMatching(
         this->mWeightNormalizationType, particleWeights);
 
     /* Update the particle weights */
-    for (std::size_t i = 0; i < this->mParticles.size(); ++i)
+    for (std::size_t i = 0; i < numOfParticles; ++i)
         this->mParticles[i].mWeight = particleWeights[i];
 
     /* Update the total processing time for updating the particle weights */
