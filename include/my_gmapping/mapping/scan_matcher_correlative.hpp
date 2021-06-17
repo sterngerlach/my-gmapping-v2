@@ -74,27 +74,19 @@ public:
     ~ScanMatcherCorrelative() = default;
 
     /* Optimize the particle poses based on the correlative scan matching */
-    void OptimizePose(
-        const std::size_t numOfParticles,
-        const std::vector<const GridMap*>& particleMaps,
-        const Sensor::ScanDataPtr<double>& scanData,
-        const std::vector<RobotPose2D<double>>& initialPoses,
-        std::vector<RobotPose2D<double>>& estimatedPoses,
-        std::vector<double>& likelihoodValues) override;
+    ScanMatchingResultVector OptimizePose(
+        const ScanMatchingQueryVector& queries,
+        const Sensor::ScanDataPtr<double>& scanData) override;
 
 private:
     /* Optimize the particle pose based on the correlative scan matching */
-    void OptimizePoseCore(
+    ScanMatchingResult OptimizePoseCore(
         const GridMapInterface& gridMap,
         const BoundingBox<int>& boundingBox,
         const GridMapInterface& coarseGridMap,
         const Sensor::ScanDataPtr<double>& scanData,
         const RobotPose2D<double>& initialPose,
-        const double normalizedScoreThreshold,
-        RobotPose2D<double>& estimatedPose,
-        double& likelihoodValue,
-        double& normalizedLikelihood,
-        double& normalizedScore);
+        const double normalizedScoreThreshold);
 
     /* Compute the search step */
     void ComputeSearchStep(const GridMapInterface& gridMap,

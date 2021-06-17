@@ -94,64 +94,50 @@ ScanMatcherCorrelative::ScanMatcherCorrelative(
 }
 
 /* Optimize the particle poses based on the correlative scan matching */
-void ScanMatcherCorrelative::OptimizePose(
-    const std::size_t numOfParticles,
-    const std::vector<const GridMap*>& particleMaps,
-    const Sensor::ScanDataPtr<double>& scanData,
-    const std::vector<RobotPose2D<double>>& initialPoses,
-    std::vector<RobotPose2D<double>>& estimatedPoses,
-    std::vector<double>& likelihoodValues)
+ScanMatchingResultVector ScanMatcherCorrelative::OptimizePose(
+    const ScanMatchingQueryVector& queries,
+    const Sensor::ScanDataPtr<double>& scanData)
 {
-    /* Input checks */
-    assert(particleMaps.size() == numOfParticles);
-    assert(initialPoses.size() == numOfParticles);
-
-    estimatedPoses.clear();
-    estimatedPoses.resize(numOfParticles);
-    likelihoodValues.clear();
-    likelihoodValues.resize(numOfParticles);
-
-    std::vector<double> normalizedLikelihoods;
-    normalizedLikelihoods.resize(numOfParticles);
-    std::vector<double> normalizedScores;
-    normalizedScores.resize(numOfParticles);
+    ScanMatchingResultVector results;
+    results.resize(queries.size());
 
     /* Optimize the pose for each particle (parallelized using OpenMP) */
 #pragma omp parallel for
-    for (std::size_t i = 0; i < numOfParticles; ++i) {
+    for (std::size_t i = 0; i < queries.size(); ++i) {
         /* Create the timer for each thread */
         Metric::Timer timer;
+
+        const auto& initialPose = queries[i].mInitialPose;
+        const auto& gridMap = queries[i].mGridMap;
+        const int mapCols = gridMap.Cols();
+        const int mapRows = gridMap.Rows();
 
         /* Create the grid map to store the intermediate result and the final
          * result (low-resolution coarse grid map) */
         ConstMap intermediateMap {
-            particleMaps[i]->Resolution(), particleMaps[i]->BlockSize(),
+            gridMap.Resolution(), gridMap.BlockSize(),
             this->mCroppedMapSizeY, this->mCroppedMapSizeX };
         ConstMap precompMap {
-            particleMaps[i]->Resolution(), particleMaps[i]->BlockSize(),
+            gridMap.Resolution(), gridMap.BlockSize(),
             this->mCroppedMapSizeY, this->mCroppedMapSizeX };
 
         /* Determine the desired size of the grid map for scan matching */
         const int mapColsMax = this->mUseCroppedMap ?
-            this->mCroppedMapSizeX : particleMaps[i]->Cols();
+            this->mCroppedMapSizeX : mapCols;
         const int mapRowsMax = this->mUseCroppedMap ?
-            this->mCroppedMapSizeY : particleMaps[i]->Rows();
+            this->mCroppedMapSizeY : mapRows;
 
         /* Compute the center position of the cropped grid map */
-        const Point2D<int> desiredCenterIdx = particleMaps[i]->PositionToIndex(
-            initialPoses[i].mX, initialPoses[i].mY);
+        const Point2D<int> desiredCenterIdx = gridMap.PositionToIndex(
+            initialPose.mX, initialPose.mY);
         /* Use std::clamp() here since the above `centerIdx` could be
          * out-of-bounds (the current particle is outside of the grid map) */
         const Point2D<int> possibleIdxMin {
-            std::clamp(desiredCenterIdx.mX - mapColsMax, 0,
-                       particleMaps[i]->Cols() - 1),
-            std::clamp(desiredCenterIdx.mY - mapRowsMax, 0,
-                       particleMaps[i]->Rows() - 1) };
+            std::clamp(desiredCenterIdx.mX - mapColsMax, 0, mapCols - 1),
+            std::clamp(desiredCenterIdx.mY - mapRowsMax, 0, mapRows - 1) };
         const Point2D<int> possibleIdxMax {
-            std::clamp(desiredCenterIdx.mX + mapColsMax, 1,
-                       particleMaps[i]->Cols()),
-            std::clamp(desiredCenterIdx.mY + mapRowsMax, 1,
-                       particleMaps[i]->Rows()) };
+            std::clamp(desiredCenterIdx.mX + mapColsMax, 1, mapCols),
+            std::clamp(desiredCenterIdx.mY + mapRowsMax, 1, mapRows) };
         const Point2D<int> centerIdx {
             (possibleIdxMax.mX + possibleIdxMin.mX) / 2,
             (possibleIdxMax.mY + possibleIdxMin.mY) / 2 };
@@ -161,12 +147,12 @@ void ScanMatcherCorrelative::OptimizePose(
             std::max(centerIdx.mX - mapColsMax / 2, 0),
             std::max(centerIdx.mY - mapRowsMax / 2, 0) };
         const Point2D<int> idxMax {
-            std::min(centerIdx.mX + mapColsMax / 2, particleMaps[i]->Cols()),
-            std::min(centerIdx.mY + mapRowsMax / 2, particleMaps[i]->Rows()) };
+            std::min(centerIdx.mX + mapColsMax / 2, mapCols),
+            std::min(centerIdx.mY + mapRowsMax / 2, mapRows) };
         const BoundingBox<int> boundingBox { idxMin, idxMax };
 
         /* Precompute the coarser grid map from the cropped grid map */
-        PrecomputeGridMap(*particleMaps[i], this->mLowResolution, idxMin,
+        PrecomputeGridMap(gridMap, this->mLowResolution, idxMin,
                           intermediateMap, precompMap);
 
         /* Update the processing time for setting up the input */
@@ -174,51 +160,38 @@ void ScanMatcherCorrelative::OptimizePose(
         timer.Start();
 
         /* Optimize the particle pose based on the correlative scan matching */
-        RobotPose2D<double> estimatedPose;
-        double logLikelihood;
-        double normalizedLikelihood;
-        double normalizedScore;
-        this->OptimizePoseCore(*particleMaps[i], boundingBox, precompMap,
-                               scanData, initialPoses[i], 0.0,
-                               estimatedPose, logLikelihood,
-                               normalizedLikelihood, normalizedScore);
+        results[i] = this->OptimizePoseCore(
+            gridMap, boundingBox, precompMap, scanData, initialPose, 0.0);
 
         /* Update the processing time for the optimization */
         this->mMetrics.mOptimizationTime->Observe(timer.ElapsedMicro());
         timer.Stop();
-
-        /* Set the refined particle pose and the observation likelihood */
-        estimatedPoses[i] = estimatedPose;
-        likelihoodValues[i] = logLikelihood;
-        normalizedLikelihoods[i] = normalizedLikelihood;
-        normalizedScores[i] = normalizedScore;
     }
 
     /* Determine the maximum likelihood value and its corresponding score */
     const auto bestIt = std::max_element(
-        likelihoodValues.begin(), likelihoodValues.end());
-    const auto bestIdx = std::distance(likelihoodValues.begin(), bestIt);
+        results.begin(), results.end(),
+        [](const ScanMatchingResult& lhs, const ScanMatchingResult& rhs) {
+            return lhs.mLikelihood < rhs.mLikelihood; });
 
     /* Update the normalized score value of the best particle */
-    this->mMetrics.mScoreValue->Observe(normalizedScores[bestIdx]);
+    this->mMetrics.mScoreValue->Observe(bestIt->mNormalizedScore);
     /* Update the normalized likelihood value of the best particle */
-    this->mMetrics.mLikelihoodValue->Observe(normalizedLikelihoods[bestIdx]);
+    this->mMetrics.mLikelihoodValue->Observe(bestIt->mNormalizedLikelihood);
     /* Update the number of the scan points */
     this->mMetrics.mNumOfScans->Observe(scanData->NumOfScans());
+
+    return results;
 }
 
 /* Optimize the particle pose based on the correlative scan matching */
-void ScanMatcherCorrelative::OptimizePoseCore(
+ScanMatchingResult ScanMatcherCorrelative::OptimizePoseCore(
     const GridMapInterface& gridMap,
     const BoundingBox<int>& boundingBox,
     const GridMapInterface& coarseGridMap,
     const Sensor::ScanDataPtr<double>& scanData,
     const RobotPose2D<double>& initialPose,
-    const double normalizedScoreThreshold,
-    RobotPose2D<double>& estimatedPose,
-    double& likelihoodValue,
-    double& normalizedLikelihood,
-    double& normalizedScore)
+    const double normalizedScoreThreshold)
 {
     /* Find the best particle pose from the search window */
     /* Compute the sensor pose from the initial particle pose */
@@ -241,7 +214,7 @@ void ScanMatcherCorrelative::OptimizePoseCore(
         std::ceil(0.5 * this->mRangeTheta / stepTheta));
 
     /* Perform the scan matching against the low resolution grid map */
-    double scoreMax = normalizedScoreThreshold;
+    double scoreMax = normalizedScoreThreshold * scanData->NumOfScans();
     int bestWinX = -winX;
     int bestWinY = -winY;
     int bestWinTheta = -winTheta;
@@ -265,19 +238,19 @@ void ScanMatcherCorrelative::OptimizePoseCore(
          * related by pure translation for the 'x' and 'y' search directions */
         for (int x = -winX; x < winX; x += this->mLowResolution) {
             for (int y = -winY; y < winY; y += this->mLowResolution) {
-                /* Evaluate the normalized matching score
-                 * Add index offsets `gridMapMinIdx.mX` and `gridMapMinIdx.mY`
-                 * since the grid cell indices for the scan points `scanIndices`
-                 * are computed from the original grid map `gridMap` */
+                /* Evaluate the matching score
+                 * Add index offset `boundingBox.mMin` since the grid cell
+                 * indices for the scan points `scanIndices` are computed
+                 * from the original grid map `gridMap` */
                 const BoundingBox<int>& coarseMapBox {
                     0, 0, coarseGridMap.Cols(), coarseGridMap.Rows() };
-                const double normalizedScore = this->ComputeScore(
+                const double score = this->ComputeScore(
                     coarseGridMap, coarseMapBox, scanIndices,
                     boundingBox.mMin, x, y);
 
                 /* Ignore the score of the low-resolution grid cell
                  * if the score is below a maximum score */
-                if (normalizedScore <= scoreMax) {
+                if (score <= scoreMax) {
                     /* Update the number of the ignored nodes */
                     numOfIgnoredNodes++;
                     continue;
@@ -294,9 +267,6 @@ void ScanMatcherCorrelative::OptimizePoseCore(
         }
     }
 
-    /* The appropriate solution is found if the maximum score is
-     * larger than (not larger than or equal to) the score threshold */
-    const bool poseFound = scoreMax > normalizedScoreThreshold;
     /* Compute the best sensor pose */
     const RobotPose2D<double> bestSensorPose {
         sensorPose.mX + bestWinX * stepX,
@@ -304,12 +274,16 @@ void ScanMatcherCorrelative::OptimizePoseCore(
         sensorPose.mTheta + bestWinTheta * stepTheta };
 
     /* Compute the estimated robot pose and the likelihood value */
-    estimatedPose = MoveBackward(
+    const RobotPose2D<double> estimatedPose = MoveBackward(
         bestSensorPose, scanData->RelativeSensorPose());
-    likelihoodValue = this->mLikelihoodFunc->Likelihood(
+
+    /* Set the resulting likelihood */
+    const double likelihood = this->mLikelihoodFunc->Likelihood(
         gridMap, scanData, bestSensorPose);
-    normalizedLikelihood = likelihoodValue / scanData->NumOfScans();
-    normalizedScore = scoreMax;
+    const double normalizedLikelihood = likelihood / scanData->NumOfScans();
+    /* Set the resulting score */
+    const double score = scoreMax;
+    const double normalizedScore = score / scanData->NumOfScans();
 
     /* Update the distribution and counter metrics */
     this->mMetrics.mDiffTranslation->Observe(
@@ -324,6 +298,10 @@ void ScanMatcherCorrelative::OptimizePoseCore(
     this->mMetrics.mStepSizeTheta->Observe(stepTheta);
     this->mMetrics.mNumOfIgnoredNodes->Increment(numOfIgnoredNodes);
     this->mMetrics.mNumOfProcessedNodes->Increment(numOfProcessedNodes);
+
+    return ScanMatchingResult { initialPose, estimatedPose,
+                                normalizedLikelihood, likelihood,
+                                normalizedScore, score };
 }
 
 /* Compute the search step */
@@ -373,8 +351,8 @@ void ScanMatcherCorrelative::ComputeScanIndices(
     return;
 }
 
-/* Compute the normalized scan matching score based on the
- * already projected scan points (indices) and index offsets */
+/* Compute the scan matching score based on the already projected
+ * scan points (indices) and index offsets */
 double ScanMatcherCorrelative::ComputeScore(
     const GridMapInterface& gridMap,
     const BoundingBox<int>& boundingBox,
@@ -406,9 +384,7 @@ double ScanMatcherCorrelative::ComputeScore(
         sumScore += prob;
     }
 
-    /* Normalize the score function */
-    const double normalizedScore = sumScore / scanIndices.size();
-    return normalizedScore;
+    return sumScore;
 }
 
 /* Evaluate the matching score using high-resolution grid map */
@@ -428,13 +404,13 @@ void ScanMatcherCorrelative::EvaluateHighResolutionMap(
     /* Search inside the relatively small area */
     for (int x = offsetX; x < offsetX + this->mLowResolution; ++x) {
         for (int y = offsetY; y < offsetY + this->mLowResolution; ++y) {
-            /* Evaluate the normalized matching score */
-            const double normalizedScore = this->ComputeScore(
+            /* Evaluate the matching score */
+            const double score = this->ComputeScore(
                 gridMap, boundingBox, scanIndices, scanIdxOffset, x, y);
 
             /* Update the maximum score and search window index */
-            if (maxScore < normalizedScore) {
-                maxScore = normalizedScore;
+            if (maxScore < score) {
+                maxScore = score;
                 maxWinX = x;
                 maxWinY = y;
                 maxWinTheta = offsetTheta;
