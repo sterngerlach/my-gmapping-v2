@@ -1,0 +1,144 @@
+{
+    "GuiEnabled": "false",
+    "DrawFrameInterval": 5,
+
+    "MotionModelRelativePose": {
+        "SigmaLinear": 0.05,
+        "SigmaAngular": 0.05,
+        "SigmaLinearToAngular": 0.025,
+        "SigmaAngularToLinear": 0.025
+    },
+
+    "LikelihoodGreedyEndpoint": {
+        "MapResolution": 0.05,
+        "MinUsableRange": 0.01,
+        "MaxUsableRange": 10.0,
+        "HitAndMissedCellDist": 0.075,
+        "OccupancyThreshold": 0.45,
+        "GaussianSigma": 0.05,
+        "KernelSize": 1,
+        "LikelihoodScale": 0.75,
+        "UseLocalMap": "false",
+        "LocalMapSize": 256
+    },
+
+    "ScanMatcherHillClimbing": {
+        "Name": "ScanMatcherHillClimbing",
+        "LinearDelta": 0.1,
+        "AngularDelta": 0.1,
+        "MaxIterations": 50,
+        "NumOfRefinements": 5
+    },
+
+    "FinalScanMatcherHillClimbing": {
+        "Name": "FinalScanMatcherHillClimbing",
+        "LinearDelta": 0.01,
+        "AngularDelta": 0.01,
+        "MaxIterations": 10,
+        "NumOfRefinements": 2
+    },
+
+    "ScanMatcherCorrelative": {
+        "Name": "ScanMatcherCorrelative",
+        "UseCroppedMap": "true",
+        "CroppedMapSizeX": 320,
+        "CroppedMapSizeY": 320,
+        "LowResolution": 5,
+        "RangeX": 0.25,
+        "RangeY": 0.25,
+        "RangeTheta": 0.25,
+        "ScanRangeMax": 10.0
+    },
+
+    "ScanMatcherCorrelativeFPGA": {
+        "Name": "ScanMatcherCorrelativeFPGA",
+        "MaxNumOfScans": 512,
+        "MapResolution": 0.05,
+        "MaxMapSizeX": 320,
+        "MaxMapSizeY": 320,
+        "CoarseMapResolution": 8,
+        "MapBitWidth": 6,
+        "MapChunkWidth": 8,
+
+        "RegisterOffsets": {
+            "AxiLiteSApCtrl": "0x00",
+            "AxiLiteSGIE": "0x04",
+            "AxiLiteSIER": "0x08",
+            "AxiLiteSISR": "0x0C",
+            "AxiLiteSNumOfScans": "0x10",
+            "AxiLiteSScanRangeMax": "0x18",
+            "AxiLiteSScoreThreshold": "0x20",
+            "AxiLiteSPoseX": "0x28",
+            "AxiLiteSPoseY": "0x30",
+            "AxiLiteSPoseTheta": "0x38",
+            "AxiLiteSMapSizeX": "0x40",
+            "AxiLiteSMapSizeY": "0x48",
+            "AxiLiteSMapMinX": "0x50",
+            "AxiLiteSMapMinY": "0x58",
+            "AxiLiteSWinX": "0x60",
+            "AxiLiteSWinY": "0x68",
+            "AxiLiteSWinTheta": "0x70",
+            "AxiLiteSStepX": "0x78",
+            "AxiLiteSStepY": "0x80",
+            "AxiLiteSStepTheta": "0x88"
+        },
+
+        "WaitForControlRegister": "true",
+        "WaitForDmaTransfer": "true",
+        "AxiLiteSBaseAddress0": "0x43C00000",
+        "AxiLiteSAddressRange0": "0x10000",
+        "AxiDmaBaseAddress0": "0x40400000",
+        "AxiDmaAddressRange0": "0x10000",
+        "AxiLiteSBaseAddress1": "0x43C10000",
+        "AxiLiteSAddressRange1": "0x10000",
+        "AxiDmaBaseAddress1": "0x40410000",
+        "AxiDmaAddressRange1": "0x10000",
+
+        "SearchRangeX": 0.25,
+        "SearchRangeY": 0.25,
+        "SearchRangeTheta": 0.25,
+        "ScanRangeMax": 20.0
+    },
+
+    "ScanInterpolator": {
+        "DistScans": 0.05,
+        "DistThresholdEmpty": 0.25
+    },
+
+    "CovarianceEstimator": {
+        "CovarianceScale": 1e4
+    },
+
+    "Hardware": {
+        "EnableHardwareAcceleration": "false",
+        "BitstreamFileName": "design0.bit"
+    },
+
+    "GridMapBuilder": {
+        "ScanMatcherType": "RealTimeCorrelative",
+        "UseHardwareScanMatcher": "false",
+        "NumOfParticles": 16,
+        "InitialPose": {
+            "X": 0.0,
+            "Y": 0.0,
+            "Theta": 0.0
+        },
+        "Map": {
+            "Resolution": 0.05,
+            "UseLatestMap": "false",
+            "NumOfScansForLatestMap": 5
+        },
+        "UpdateThresholdLinearDist": 0.5,
+        "UpdateThresholdAngularDist": 0.5,
+        "UpdateThresholdTime": 5.0,
+        "MaxUsableRange": 10.0,
+        "MinUsableRange": 0.01,
+        "ResampleThreshold": 0.5,
+        "ProbabilityHit": 0.65,
+        "ProbabilityMiss": 0.45,
+        "WeightNormalizer": "ExponentialWeight",
+        "WeightNormalizerHardware": "ExponentialWeight",
+        "UseScanInterpolator": "true",
+        "DegenerationThreshold": 10.0
+    }
+}
