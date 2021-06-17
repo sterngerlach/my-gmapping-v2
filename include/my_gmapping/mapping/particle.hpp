@@ -17,58 +17,65 @@ namespace Mapping {
 class Particle final
 {
 public:
+    /* Type definitions */
+    using TrajectoryNodePtr = std::shared_ptr<TrajectoryNode>;
+
     /* Constructor */
-    Particle(const GridMapType& gridMap,
-             const GridMapType& latestMap,
-             double weight,
+    Particle(const GridMap& gridMap,
+             const GridMap& latestMap,
+             const double weight,
              const RobotPose2D<double>& pose,
-             const std::shared_ptr<TrajectoryNode>& node);
+             const TrajectoryNodePtr& node) :
+        mMap(gridMap), mLatestMap(latestMap),
+        mWeight(weight), mPose(pose), mNode(node) { }
     /* Destructor */
     ~Particle() = default;
 
     /* Copy constructor */
-    Particle(const Particle& other);
+    Particle(const Particle& other) = default;
     /* Copy assignment operator */
-    Particle& operator=(const Particle& other);
-
+    Particle& operator=(const Particle& other) = default;
     /* Move constructor */
-    Particle(Particle&& other);
+    Particle(Particle&& other) = default;
     /* Move assignment operator */
-    Particle& operator=(Particle&& other);
+    Particle& operator=(Particle&& other) = default;
 
-    /* Get the occupancy grid map */
-    inline GridMapType& Map() { return this->mMap; }
-    inline const GridMapType& Map() const { return this->mMap; }
+    /* Get the occupancy grid map of this particle */
+    inline GridMap& Map() { return this->mMap; }
+    /* Get the occupancy grid map of this particle */
+    inline const GridMap& Map() const { return this->mMap; }
 
-    /* Get the latest grid map */
-    inline GridMapType& LatestMap() { return this->mLatestMap; }
-    inline const GridMapType& LatestMap() const { return this->mLatestMap; }
+    /* Get the latest grid map of this particle */
+    inline GridMap& LatestMap() { return this->mLatestMap; }
+    /* Get the latest grid map of this particle */
+    inline const GridMap& LatestMap() const { return this->mLatestMap; }
 
     /* Get the particle weight */
     inline double Weight() const { return this->mWeight; }
-    inline void SetWeight(double weight) { this->mWeight = weight; }
+    /* Set the particle weight */
+    inline void SetWeight(const double weight) { this->mWeight = weight; }
 
     /* Get the trajectory node */
-    inline std::shared_ptr<TrajectoryNode>& Node()
-    { return this->mNode; }
-    inline const std::shared_ptr<TrajectoryNode>& Node() const
-    { return this->mNode; }
+    inline TrajectoryNodePtr& Node() { return this->mNode; }
+    /* Get the trajectory node */
+    inline const TrajectoryNodePtr& Node() const { return this->mNode; }
 
     /* Get the current particle pose */
     inline RobotPose2D<double>& Pose() { return this->mPose; }
+    /* Get the current particle pose */
     inline const RobotPose2D<double>& Pose() const { return this->mPose; }
 
 private:
     /* Occupancy grid map associated to the particle */
-    GridMapType                     mMap;
+    GridMap             mMap;
     /* Occupancy grid map constructed from the latest scans */
-    GridMapType                     mLatestMap;
+    GridMap             mLatestMap;
     /* Weight of the particle */
-    double                          mWeight;
+    double              mWeight;
     /* Current particle pose */
-    RobotPose2D<double>             mPose;
+    RobotPose2D<double> mPose;
     /* Pointer to the trajectory node */
-    std::shared_ptr<TrajectoryNode> mNode;
+    TrajectoryNodePtr   mNode;
 };
 
 } /* namespace Mapping */
