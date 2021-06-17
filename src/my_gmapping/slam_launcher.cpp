@@ -716,7 +716,7 @@ int main(int argc, char** argv)
         pMapBuilder->ParticleTrajectoryWithTimeStamp(bestParticleIdx);
 
     IO::MapSaver mapSaver;
-    mapSaver.SaveMap(bestParticle.Map(), bestParticleTrajectory,
+    mapSaver.SaveMap(bestParticle.mMap, bestParticleTrajectory,
                      outputFilePath, true);
 
     /* Save the metrics */

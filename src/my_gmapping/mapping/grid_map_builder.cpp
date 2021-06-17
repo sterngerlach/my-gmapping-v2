@@ -222,19 +222,19 @@ bool GridMapBuilder::ProcessScan(
     /* Sample the particle poses from the odometry data
      * Update the current particle pose */
     for (auto& particle : this->mParticles)
-        particle.Pose() = this->mMotionModel->SamplePose(
-            particle.Pose(), relPoseFromLastMapUpdate);
+        particle.mPose = this->mMotionModel->SamplePose(
+            particle.mPose, relPoseFromLastMapUpdate);
 
     /* Initialize the grid map and adjust the positional offset */
     if (isFirstScan) {
         for (auto& particle : this->mParticles) {
             const int blockSize = 1 << 4;
-            particle.Map().Initialize(
+            particle.mMap.Initialize(
                 this->mResolution, blockSize, blockSize, blockSize,
-                particle.Pose().mX, particle.Pose().mY);
-            particle.LatestMap().Initialize(
+                particle.mPose.mX, particle.mPose.mY);
+            particle.mLatestMap.Initialize(
                 this->mResolution, blockSize, blockSize, blockSize,
-                particle.Pose().mX, particle.Pose().mY);
+                particle.mPose.mX, particle.mPose.mY);
         }
     }
 
@@ -310,7 +310,7 @@ std::size_t GridMapBuilder::BestParticleIndex() const
         this->mParticles.cbegin(),
         this->mParticles.cend(),
         [](const Particle& lhs, const Particle& rhs) {
-            return lhs.Weight() < rhs.Weight(); });
+            return lhs.mWeight < rhs.mWeight; });
     const std::size_t bestIdx = static_cast<std::size_t>(
         std::distance(std::cbegin(this->mParticles), bestIter));
 
@@ -322,7 +322,7 @@ std::vector<TimeStampedPose> GridMapBuilder::ParticleTrajectoryWithTimeStamp(
     std::size_t particleIdx) const
 {
     const Particle& particle = this->mParticles[particleIdx];
-    std::shared_ptr<TrajectoryNode> nodePtr = particle.Node();
+    std::shared_ptr<TrajectoryNode> nodePtr = particle.mNode;
 
     std::vector<TimeStampedPose> particleTrajectory;
 
@@ -343,7 +343,7 @@ std::vector<RobotPose2D<double>> GridMapBuilder::ParticleTrajectory(
     std::size_t particleIdx) const
 {
     const Particle& particle = this->mParticles[particleIdx];
-    std::shared_ptr<TrajectoryNode> nodePtr = particle.Node();
+    std::shared_ptr<TrajectoryNode> nodePtr = particle.mNode;
 
     std::vector<RobotPose2D<double>> particleTrajectory;
 
@@ -396,11 +396,11 @@ void GridMapBuilder::ExecuteScanMatching(
         /* Use the grid map constructed from the latest scans
          * instead of the entire grid map */
         if (this->mUseLatestMap)
-            particleMaps.push_back(&this->mParticles[i].LatestMap());
+            particleMaps.push_back(&this->mParticles[i].mLatestMap);
         else
-            particleMaps.push_back(&this->mParticles[i].Map());
+            particleMaps.push_back(&this->mParticles[i].mMap);
 
-        initialPoses.push_back(this->mParticles[i].Pose());
+        initialPoses.push_back(this->mParticles[i].mPose);
     }
 
     /* Execute scan matching for particles */
@@ -429,19 +429,19 @@ void GridMapBuilder::ExecuteScanMatching(
         /* Check the degeneration using the pose covariance */
         const Eigen::Matrix3d covarianceMat =
             this->mCovarianceEstimator->ComputeCovariance(
-                this->mParticles[i].Map(), scanData, estimatedPoses[i]);
+                this->mParticles[i].mMap, scanData, estimatedPoses[i]);
         const bool degenerationDetected =
             this->CheckDegeneration(covarianceMat);
 
         /* Update the particle pose if there is no degeneration */
         if (!degenerationDetected)
-            this->mParticles[i].Pose() = estimatedPoses[i];
+            this->mParticles[i].mPose = estimatedPoses[i];
 
         /* Update the trajectory node */
         auto pNewNode = std::make_shared<TrajectoryNode>(
-            this->mParticles[i].Node(), this->mParticles[i].Pose(),
+            this->mParticles[i].mNode, this->mParticles[i].mPose,
             scanData->TimeStamp());
-        this->mParticles[i].Node() = pNewNode;
+        this->mParticles[i].mNode = pNewNode;
     }
 
     /* Update the total processing time for the final scan matching */
@@ -457,7 +457,7 @@ void GridMapBuilder::ExecuteScanMatching(
 
             /* Compute the log likelihood */
             const double logLikelihood = this->mLikelihoodFunc->Likelihood(
-                this->mParticles[i].Map(), scanData, sensorPose);
+                this->mParticles[i].mMap, scanData, sensorPose);
 
             /* Update the log likelihood */
             particleWeights[i] = logLikelihood;
@@ -470,7 +470,7 @@ void GridMapBuilder::ExecuteScanMatching(
 
     /* Update the particle weights */
     for (std::size_t i = 0; i < this->mParticles.size(); ++i)
-        this->mParticles[i].SetWeight(particleWeights[i]);
+        this->mParticles[i].mWeight = particleWeights[i];
 
     /* Update the total processing time for updating the particle weights */
     this->mMetrics.mWeightUpdateTime->Observe(timer.ElapsedMicro());
@@ -484,7 +484,7 @@ void GridMapBuilder::UpdateGridMap(
 {
     /* Just forward to the map builder */
     this->mMapBuilder.UpdateGridMap(
-        particle.Map(), particle.Pose(), scanData);
+        particle.mMap, particle.mPose, scanData);
 }
 
 /* Update the grid maps for all particles */
@@ -505,7 +505,7 @@ void GridMapBuilder::UpdateLatestMap(
     if (latestScanData.empty())
         return;
 
-    auto pNode = particle.Node();
+    auto pNode = particle.mNode;
     std::deque<RobotPose2D<double>> latestPoses;
 
     for (std::size_t i = 0; i < latestScanData.size(); ++i) {
@@ -515,7 +515,7 @@ void GridMapBuilder::UpdateLatestMap(
 
     /* Just forward to the map builder */
     this->mMapBuilder.UpdateLatestMap(
-        particle.LatestMap(), latestPoses, latestScanData);
+        particle.mLatestMap, latestPoses, latestScanData);
 }
 
 /* Update the latest maps for all particles */
@@ -554,7 +554,7 @@ void GridMapBuilder::ResampleParticles()
     const double weightSum = std::accumulate(
         this->mParticles.begin(), this->mParticles.end(), 0.0,
         [](double accWeight, const Particle& particle) {
-            return accWeight + particle.Weight(); });
+            return accWeight + particle.mWeight; });
     const double weightUnit =
         weightSum / static_cast<double>(numOfParticles);
 
@@ -563,12 +563,12 @@ void GridMapBuilder::ResampleParticles()
     resampledIndices.reserve(numOfParticles);
 
     double accWeight = uniformDist(this->mRandEngine) * weightUnit;
-    double accParticleWeight = this->mParticles[0].Weight();
+    double accParticleWeight = this->mParticles[0].mWeight;
     int particleIdx = 0;
 
     for (int i = 0; i < static_cast<int>(numOfParticles); ++i) {
         while (accWeight > accParticleWeight)
-            accParticleWeight += this->mParticles[++particleIdx].Weight();
+            accParticleWeight += this->mParticles[++particleIdx].mWeight;
 
         resampledIndices.push_back(particleIdx);
         accWeight += weightUnit;
@@ -586,7 +586,7 @@ double GridMapBuilder::CalculateEffectiveSampleSize() const
     const double sumOfSquaredWeights = std::accumulate(
         this->mParticles.cbegin(), this->mParticles.cend(), 0.0,
         [](double accWeight, const Particle& particle) {
-            return accWeight + particle.Weight() * particle.Weight(); });
+            return accWeight + particle.mWeight * particle.mWeight; });
     return 1.0 / sumOfSquaredWeights;
 }
 
