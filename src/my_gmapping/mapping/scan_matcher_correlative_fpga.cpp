@@ -511,60 +511,40 @@ void ScanMatcherCorrelativeFPGA::SetParameterRegisters(
     const int winX, const int winY, const int winTheta,
     const double stepX, const double stepY, const double stepTheta)
 {
+    const auto doubleToU32 = [](const double x) {
+        return FloatToU32(static_cast<float>(x)); };
+    const auto writeReg = [&](const std::uint32_t offsetInBytes,
+                              const std::uint32_t value) {
+        this->mControlRegisters[coreId]->Write(offsetInBytes, value); };
+    const auto& config = this->mCommonConfig;
+
     /* Set the actual number of the scan points */
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSNumOfScans,
-        I32ToU32(numOfScans));
+    writeReg(config.mAxiLiteSNumOfScans, I32ToU32(numOfScans));
     /* Set the maximum scan range considered valid */
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSScanRangeMax,
-        FloatToU32(static_cast<float>(scanRangeMax)));
+    writeReg(config.mAxiLiteSScanRangeMax, doubleToU32(scanRangeMax));
     /* Set the score threshold (for loop detection) */
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSScoreThreshold,
-        I32ToU32(scoreThreshold));
+    writeReg(config.mAxiLiteSScoreThreshold, I32ToU32(scoreThreshold));
 
     /* Set the minimum possible sensor pose */
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSPoseX,
-        FloatToU32(static_cast<float>(minSensorPose.mX)));
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSPoseY,
-        FloatToU32(static_cast<float>(minSensorPose.mY)));
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSPoseTheta,
-        FloatToU32(static_cast<float>(minSensorPose.mTheta)));
+    writeReg(config.mAxiLiteSPoseX, doubleToU32(minSensorPose.mX));
+    writeReg(config.mAxiLiteSPoseY, doubleToU32(minSensorPose.mY));
+    writeReg(config.mAxiLiteSPoseTheta, doubleToU32(minSensorPose.mTheta));
 
     /* Set the actual size of the cropped grid map */
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSMapSizeX, I32ToU32(gridMapSize.mX));
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSMapSizeY, I32ToU32(gridMapSize.mY));
+    writeReg(config.mAxiLiteSMapSizeX, I32ToU32(gridMapSize.mX));
+    writeReg(config.mAxiLiteSMapSizeY, I32ToU32(gridMapSize.mY));
     /* Set the minimum coordinate of the cropped grid map */
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSMapMinX,
-        FloatToU32(static_cast<float>(gridMapMinPos.mX)));
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSMapMinY,
-        FloatToU32(static_cast<float>(gridMapMinPos.mY)));
+    writeReg(config.mAxiLiteSMapMinX, doubleToU32(gridMapMinPos.mX));
+    writeReg(config.mAxiLiteSMapMinY, doubleToU32(gridMapMinPos.mY));
 
     /* Set the size of the search window */
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSWinX, I32ToU32(winX));
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSWinY, I32ToU32(winY));
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSWinTheta, I32ToU32(winTheta));
+    writeReg(config.mAxiLiteSWinX, I32ToU32(winX));
+    writeReg(config.mAxiLiteSWinY, I32ToU32(winY));
+    writeReg(config.mAxiLiteSWinTheta, I32ToU32(winTheta));
     /* Set the search step */
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSStepX,
-        FloatToU32(static_cast<float>(stepX)));
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSStepY,
-        FloatToU32(static_cast<float>(stepY)));
-    this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSStepTheta,
-        FloatToU32(static_cast<float>(stepTheta)));
+    writeReg(config.mAxiLiteSStepX, doubleToU32(stepX));
+    writeReg(config.mAxiLiteSStepY, doubleToU32(stepY));
+    writeReg(config.mAxiLiteSStepTheta, doubleToU32(stepTheta));
 }
 
 /* Send the scan data through AXI DMA */
