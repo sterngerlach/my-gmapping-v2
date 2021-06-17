@@ -565,57 +565,57 @@ void ScanMatcherCorrelativeFPGA::SetParameterRegisters(
     /* Set the actual number of the scan points */
     this->mControlRegisters[coreId]->Write(
         this->mCommonConfig.mAxiLiteSNumOfScans,
-        Int32ToUInt32(numOfScans));
+        I32ToU32(numOfScans));
     /* Set the maximum scan range considered valid */
     this->mControlRegisters[coreId]->Write(
         this->mCommonConfig.mAxiLiteSScanRangeMax,
-        FloatToUInt32(static_cast<float>(scanRangeMax)));
+        FloatToU32(static_cast<float>(scanRangeMax)));
     /* Set the score threshold (for loop detection) */
     this->mControlRegisters[coreId]->Write(
         this->mCommonConfig.mAxiLiteSScoreThreshold,
-        Int32ToUInt32(scoreThreshold));
+        I32ToU32(scoreThreshold));
 
     /* Set the minimum possible sensor pose */
     this->mControlRegisters[coreId]->Write(
         this->mCommonConfig.mAxiLiteSPoseX,
-        FloatToUInt32(static_cast<float>(minSensorPose.mX)));
+        FloatToU32(static_cast<float>(minSensorPose.mX)));
     this->mControlRegisters[coreId]->Write(
         this->mCommonConfig.mAxiLiteSPoseY,
-        FloatToUInt32(static_cast<float>(minSensorPose.mY)));
+        FloatToU32(static_cast<float>(minSensorPose.mY)));
     this->mControlRegisters[coreId]->Write(
         this->mCommonConfig.mAxiLiteSPoseTheta,
-        FloatToUInt32(static_cast<float>(minSensorPose.mTheta)));
+        FloatToU32(static_cast<float>(minSensorPose.mTheta)));
 
     /* Set the actual size of the cropped grid map */
     this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSMapSizeX, Int32ToUInt32(gridMapSize.mX));
+        this->mCommonConfig.mAxiLiteSMapSizeX, I32ToU32(gridMapSize.mX));
     this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSMapSizeY, Int32ToUInt32(gridMapSize.mY));
+        this->mCommonConfig.mAxiLiteSMapSizeY, I32ToU32(gridMapSize.mY));
     /* Set the minimum coordinate of the cropped grid map */
     this->mControlRegisters[coreId]->Write(
         this->mCommonConfig.mAxiLiteSMapMinX,
-        FloatToUInt32(static_cast<float>(gridMapMinPos.mX)));
+        FloatToU32(static_cast<float>(gridMapMinPos.mX)));
     this->mControlRegisters[coreId]->Write(
         this->mCommonConfig.mAxiLiteSMapMinY,
-        FloatToUInt32(static_cast<float>(gridMapMinPos.mY)));
+        FloatToU32(static_cast<float>(gridMapMinPos.mY)));
 
     /* Set the size of the search window */
     this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSWinX, Int32ToUInt32(winX));
+        this->mCommonConfig.mAxiLiteSWinX, I32ToU32(winX));
     this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSWinY, Int32ToUInt32(winY));
+        this->mCommonConfig.mAxiLiteSWinY, I32ToU32(winY));
     this->mControlRegisters[coreId]->Write(
-        this->mCommonConfig.mAxiLiteSWinTheta, Int32ToUInt32(winTheta));
+        this->mCommonConfig.mAxiLiteSWinTheta, I32ToU32(winTheta));
     /* Set the search step */
     this->mControlRegisters[coreId]->Write(
         this->mCommonConfig.mAxiLiteSStepX,
-        FloatToUInt32(static_cast<float>(stepX)));
+        FloatToU32(static_cast<float>(stepX)));
     this->mControlRegisters[coreId]->Write(
         this->mCommonConfig.mAxiLiteSStepY,
-        FloatToUInt32(static_cast<float>(stepY)));
+        FloatToU32(static_cast<float>(stepY)));
     this->mControlRegisters[coreId]->Write(
         this->mCommonConfig.mAxiLiteSStepTheta,
-        FloatToUInt32(static_cast<float>(stepTheta)));
+        FloatToU32(static_cast<float>(stepTheta)));
 }
 
 /* Send the scan data through AXI DMA */
@@ -821,8 +821,8 @@ void ScanMatcherCorrelativeFPGA::ReceiveResult(
         this->mOutputData->Ptr<volatile std::uint64_t>();
 
     /* Read the maximum score and the best X-coordinate */
-    UnpackInt32(*pOutput++, scoreMax, bestX);
-    UnpackInt32(*pOutput++, bestY, bestTheta);
+    UnpackI32(*pOutput++, scoreMax, bestX);
+    UnpackI32(*pOutput++, bestY, bestTheta);
 }
 
 /* Start the scan matcher IP core */
