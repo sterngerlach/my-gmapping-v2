@@ -76,7 +76,7 @@ public:
     /* Optimize the particle poses based on the correlative scan matching */
     void OptimizePose(
         const std::size_t numOfParticles,
-        const std::vector<const GridMapType*>& particleMaps,
+        const std::vector<const GridMap*>& particleMaps,
         const Sensor::ScanDataPtr<double>& scanData,
         const std::vector<RobotPose2D<double>>& initialPoses,
         std::vector<RobotPose2D<double>>& estimatedPoses,
@@ -85,11 +85,9 @@ public:
 private:
     /* Optimize the particle pose based on the correlative scan matching */
     void OptimizePoseCore(
-        const GridMapInterfaceType& gridMap,
-        const Point2D<int>& gridMapMinIdx,
-        const Point2D<int>& gridMapMaxIdx,
-        const Point2D<int>& gridMapSize,
-        const GridMapInterfaceType& coarseGridMap,
+        const GridMapInterface& gridMap,
+        const BoundingBox<int>& boundingBox,
+        const GridMapInterface& coarseGridMap,
         const Sensor::ScanDataPtr<double>& scanData,
         const RobotPose2D<double>& initialPose,
         const double normalizedScoreThreshold,
@@ -99,16 +97,15 @@ private:
         double& normalizedScore);
 
     /* Compute the search step */
-    void ComputeSearchStep(
-        const GridMapInterfaceType& gridMap,
-        const Sensor::ScanDataPtr<double>& scanData,
-        double& stepX,
-        double& stepY,
-        double& stepTheta) const;
+    void ComputeSearchStep(const GridMapInterface& gridMap,
+                           const Sensor::ScanDataPtr<double>& scanData,
+                           double& stepX,
+                           double& stepY,
+                           double& stepTheta) const;
 
     /* Compute the grid cell indices for scan points */
     void ComputeScanIndices(
-        const GridMapInterfaceType& gridMap,
+        const GridMapInterface& gridMap,
         const RobotPose2D<double>& sensorPose,
         const Sensor::ScanDataPtr<double>& scanData,
         std::vector<Point2D<int>>& scanIndices) const;
@@ -116,9 +113,8 @@ private:
     /* Compute the normalized scan matching score based on the
      * already projected scan points (indices) and index offsets */
     double ComputeScore(
-        const GridMapInterfaceType& gridMap,
-        const Point2D<int>& gridMapMinIdx,
-        const Point2D<int>& gridMapMaxIdx,
+        const GridMapInterface& gridMap,
+        const BoundingBox<int>& boundingBox,
         const std::vector<Point2D<int>>& scanIndices,
         const Point2D<int>& scanIdxOffset,
         const int offsetX,
@@ -126,9 +122,8 @@ private:
 
     /* Evaluate the matching score using high-resolution grid map */
     void EvaluateHighResolutionMap(
-        const GridMapInterfaceType& gridMap,
-        const Point2D<int>& gridMapMinIdx,
-        const Point2D<int>& gridMapMaxIdx,
+        const GridMapInterface& gridMap,
+        const BoundingBox<int>& boundingBox,
         const std::vector<Point2D<int>>& scanIndices,
         const Point2D<int>& scanIdxOffset,
         const int offsetX,
