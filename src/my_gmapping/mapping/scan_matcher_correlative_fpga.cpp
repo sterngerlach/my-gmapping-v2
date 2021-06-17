@@ -3,6 +3,8 @@
 
 #include "my_gmapping/mapping/scan_matcher_correlative_fpga.hpp"
 
+#include <future>
+
 namespace MyGMapping {
 namespace Mapping {
 
@@ -146,10 +148,9 @@ ScanMatcherCorrelativeFPGA::ScanMatcherCorrelativeFPGA(
             this->mCommonConfig.mMapBitWidth <= 8,
             "Bit width of the discretized occupancy probability "
             "should be in the range between 1 and 8");
-    XAssert(this->mCommonConfig.mMapChunkWidth > 0 &&
-            this->mCommonConfig.mMapChunkWidth <= 8,
+    XAssert(this->mCommonConfig.mMapChunkWidth == 8,
             "Width of the grid map chunk (consecutive grid map cells) "
-            "should be in the range between 1 and 8");
+            "should be exactly 8");
 
     /* Initialize the scan matcher IP cores */
     this->Initialize(0);
@@ -157,86 +158,36 @@ ScanMatcherCorrelativeFPGA::ScanMatcherCorrelativeFPGA(
 }
 
 /* Optimize the particle poses based on the correlative scan matching */
-void ScanMatcherCorrelativeFPGA::OptimizePose(
-    const std::size_t numOfParticles,
-    const std::vector<const GridMap*>& particleMaps,
-    const Sensor::ScanDataPtr<double>& scanData,
-    const std::vector<RobotPose2D<double>>& initialPoses,
-    std::vector<RobotPose2D<double>>& estimatedPoses,
-    std::vector<double>& likelihoodValues)
+ScanMatchingResultVector ScanMatcherCorrelativeFPGA::OptimizePose(
+    const ScanMatchingQueryVector& queries,
+    const Sensor::ScanDataPtr<double>& scanData)
 {
     /* Check the number of the particles */
-    XAssert(numOfParticles % NumOfIPCores == 0,
+    XAssert(queries.size() % NumOfIPCores == 0,
             "Number of the particles must be multiple of the "
             "number of the scan matcher IP cores implemented on the device");
-    XAssert(particleMaps.size() == numOfParticles,
-            "Mismatch between the number of the grid maps and "
-            "the number of the particles");
-    XAssert(initialPoses.size() == numOfParticles,
-            "Mismatch between the number of the initial poses and "
-            "the number of the particles");
 
-    /* Reserve the vector to store the results */
-    estimatedPoses.clear();
-    estimatedPoses.reserve(numOfParticles);
-    likelihoodValues.clear();
-    likelihoodValues.reserve(numOfParticles);
-
-    std::vector<double> normalizedLikelihoods;
-    normalizedLikelihoods.reserve(numOfParticles);
-    std::vector<double> normalizedScores;
-    normalizedScores.reserve(numOfParticles);
-
-    const std::size_t halfNumOfParticles = numOfParticles / 2;
-
-    std::vector<RobotPose2D<double>> estimatedPoses1;
-    estimatedPoses1.reserve(halfNumOfParticles);
-    std::vector<double> likelihoodValues1;
-    likelihoodValues1.reserve(halfNumOfParticles);
-    std::vector<double> normalizedLikelihoods1;
-    normalizedLikelihoods1.reserve(halfNumOfParticles);
-    std::vector<double> normalizedScores1;
-    normalizedScores1.reserve(halfNumOfParticles);
+    const std::size_t size = queries.size();
+    const std::size_t half = queries.size() / 2;
 
     /* Start a sub-thread to process the second half of the particles */
-    this->mSubThread = std::thread([&]() {
-        this->OptimizePoseCore(1, halfNumOfParticles, numOfParticles,
-                               particleMaps, scanData, initialPoses,
-                               estimatedPoses1, likelihoodValues1,
-                               normalizedLikelihoods1, normalizedScores1); });
-
-    /* Start to process the first half of the particles */
-    this->OptimizePoseCore(0, 0, halfNumOfParticles,
-                           particleMaps, scanData, initialPoses,
-                           estimatedPoses, likelihoodValues,
-                           normalizedLikelihoods, normalizedScores);
-
-    /* Wait for a sub-thread to finish */
-    if (this->mSubThread.joinable())
-        this->mSubThread.join();
+    auto futSubResults = std::async(std::launch::async, [&]() {
+        return this->OptimizePoseCore(1, half, size, queries, scanData); });
+    /* Process the first half of the particles */
+    auto results = this->OptimizePoseCore(0, 0, half, queries, scanData);
+    /* Retrieve the second half of the results */
+    auto subResults = futSubResults.get();
 
     /* Concatenate the results */
-    estimatedPoses.insert(
-        estimatedPoses.end(),
-        std::make_move_iterator(estimatedPoses1.begin()),
-        std::make_move_iterator(estimatedPoses1.end()));
-    likelihoodValues.insert(
-        likelihoodValues.end(),
-        std::make_move_iterator(likelihoodValues1.begin()),
-        std::make_move_iterator(likelihoodValues1.end()));
-    normalizedLikelihoods.insert(
-        normalizedLikelihoods.end(),
-        std::make_move_iterator(normalizedLikelihoods1.begin()),
-        std::make_move_iterator(normalizedLikelihoods1.end()));
-    normalizedScores.insert(
-        normalizedScores.end(),
-        std::make_move_iterator(normalizedScores1.begin()),
-        std::make_move_iterator(normalizedScores1.end()));
+    results.insert(results.end(),
+                   std::make_move_iterator(subResults.begin()),
+                   std::make_move_iterator(subResults.end()));
 
     /* Determine the maximum likelihood value and its corresponding score */
     const auto bestIt = std::max_element(
-        likelihoodValues.begin(), likelihoodValues.end());
-    const auto bestIdx = std::distance(likelihoodValues.begin(), bestIt);
+        results.begin(), results.end(),
+        [](const ScanMatchingResult& lhs, const ScanMatchingResult& rhs) {
+            return lhs.mLikelihood < rhs.mLikelihood; });
 
     /* Determine the number of the scan points to be transferred */
     const int maxNumOfScans = this->mCommonConfig.mMaxNumOfScans;
@@ -244,24 +195,24 @@ void ScanMatcherCorrelativeFPGA::OptimizePose(
     const int numOfScansTransferred = std::min(maxNumOfScans, numOfScans);
 
     /* Update the metrics */
-    this->mMetrics.mScoreValue->Observe(normalizedScores[bestIdx]);
-    this->mMetrics.mLikelihoodValue->Observe(normalizedLikelihoods[bestIdx]);
+    this->mMetrics.mScoreValue->Observe(bestIt->mNormalizedScore);
+    this->mMetrics.mLikelihoodValue->Observe(bestIt->mNormalizedLikelihood);
     this->mMetrics.mNumOfTransferredScans->Observe(numOfScansTransferred);
+
+    return results;
 }
 
 /* Optimize the particle poses using the scan matcher IP core */
-void ScanMatcherCorrelativeFPGA::OptimizePoseCore(
+ScanMatchingResultVector ScanMatcherCorrelativeFPGA::OptimizePoseCore(
     const int coreId,
-    const std::size_t particleIdxBegin,
-    const std::size_t particleIdxEnd,
-    const std::vector<const GridMap*>& particleMaps,
-    const Sensor::ScanDataPtr<double>& scanData,
-    const std::vector<RobotPose2D<double>>& initialPoses,
-    std::vector<RobotPose2D<double>>& estimatedPoses,
-    std::vector<double>& likelihoodValues,
-    std::vector<double>& normalizedLikelihoodValues,
-    std::vector<double>& normalizedScores)
+    const std::size_t idxBegin,
+    const std::size_t idxEnd,
+    const ScanMatchingQueryVector& queries,
+    const Sensor::ScanDataPtr<double>& scanData)
 {
+    ScanMatchingResultVector results;
+    results.reserve(idxEnd - idxBegin);
+
     /* Determine the number of the scan points to be transferred */
     const int maxNumOfScans = this->mCommonConfig.mMaxNumOfScans;
     const int numOfScans = static_cast<int>(scanData->NumOfScans());
@@ -296,14 +247,19 @@ void ScanMatcherCorrelativeFPGA::OptimizePoseCore(
     const int winTheta = std::max(1, originalWinTheta);
 
     /* Optimize the particle poses for each particle */
-    for (std::size_t i = particleIdxBegin; i < particleIdxEnd; ++i) {
+    for (std::size_t i = idxBegin; i < idxEnd; ++i) {
         /* Create the timer */
         Metric::Timer outerTimer;
         Metric::Timer timer;
 
+        const auto& initialPose = queries[i].mInitialPose;
+        const auto& gridMap = queries[i].mGridMap;
+        const int mapCols = gridMap.Cols();
+        const int mapRows = gridMap.Rows();
+
         /* Compute the sensor pose from the initial particle pose */
         const RobotPose2D<double> sensorPose =
-            Compound(initialPoses[i], scanData->RelativeSensorPose());
+            Compound(initialPose, scanData->RelativeSensorPose());
 
         /* Compute the minimum possible sensor pose */
         const RobotPose2D<double> minSensorPose {
@@ -317,19 +273,15 @@ void ScanMatcherCorrelativeFPGA::OptimizePoseCore(
 
         /* Compute the center position of the cropped grid map */
         const Point2D<int> desiredCenterIdx =
-            particleMaps[i]->PositionToIndex(sensorPose.mX, sensorPose.mY);
-        /* Use std::clamp() here since the above `gridMapCenterIdx` could be
+            gridMap.PositionToIndex(sensorPose.mX, sensorPose.mY);
+        /* Use std::clamp() here since the above `centerIdx` could be
          * out-of-bounds (the current particle is outside of the grid map) */
         const Point2D<int> possibleIdxMin {
-            std::clamp(desiredCenterIdx.mX - mapColsMax, 0,
-                       particleMaps[i]->Cols() - 1),
-            std::clamp(desiredCenterIdx.mY - mapRowsMax, 0,
-                       particleMaps[i]->Rows() - 1) };
+            std::clamp(desiredCenterIdx.mX - mapColsMax, 0, mapCols - 1),
+            std::clamp(desiredCenterIdx.mY - mapRowsMax, 0, mapRows - 1) };
         const Point2D<int> possibleIdxMax {
-            std::clamp(desiredCenterIdx.mX + mapColsMax, 1,
-                       particleMaps[i]->Cols()),
-            std::clamp(desiredCenterIdx.mY + mapRowsMax, 1,
-                       particleMaps[i]->Rows()) };
+            std::clamp(desiredCenterIdx.mX + mapColsMax, 1, mapCols),
+            std::clamp(desiredCenterIdx.mY + mapRowsMax, 1, mapRows) };
         const Point2D<int> centerIdx {
             (possibleIdxMax.mX + possibleIdxMin.mX) / 2,
             (possibleIdxMax.mY + possibleIdxMin.mY) / 2 };
@@ -339,8 +291,8 @@ void ScanMatcherCorrelativeFPGA::OptimizePoseCore(
             std::max(centerIdx.mX - mapColsMax / 2, 0),
             std::max(centerIdx.mY - mapRowsMax / 2, 0) };
         const Point2D<int> idxMax {
-            std::min(centerIdx.mX + mapColsMax / 2, particleMaps[i]->Cols()),
-            std::min(centerIdx.mY + mapRowsMax / 2, particleMaps[i]->Rows()) };
+            std::min(centerIdx.mX + mapColsMax / 2, mapCols),
+            std::min(centerIdx.mY + mapRowsMax / 2, mapRows) };
         const BoundingBox<int> boundingBox { idxMin, idxMax };
 
         /* Compute the size of the cropped grid map */
@@ -348,7 +300,7 @@ void ScanMatcherCorrelativeFPGA::OptimizePoseCore(
             boundingBox.Width(), boundingBox.Height() };
         /* Compute the minimum position of the cropped grid map */
         const Point2D<double> gridMapMinPos =
-            particleMaps[i]->IndexToPosition(idxMin.mY, idxMin.mX);
+            gridMap.IndexToPosition(idxMin.mY, idxMin.mX);
 
         /* Update the metrics and restart the timer */
         this->mMetrics.mInputSetupTime->Observe(timer.ElapsedMicro());
@@ -368,14 +320,14 @@ void ScanMatcherCorrelativeFPGA::OptimizePoseCore(
         timer.Start();
 
         /* Send the scan data for the first particle only */
-        const bool scanDataTransferred = (i == particleIdxBegin);
+        const bool scanDataTransferred = (i == idxBegin);
         this->SendScanData(coreId, scanDataTransferred, scanData);
         /* Update the metrics and restart the timer */
         this->mMetrics.mScanSendTime->Observe(timer.ElapsedMicro());
         timer.Start();
 
         /* Send the grid map */
-        this->SendGridMap(coreId, *particleMaps[i], boundingBox);
+        this->SendGridMap(coreId, gridMap, boundingBox);
         /* Update the metrics and restart the timer */
         this->mMetrics.mMapSendTime->Observe(timer.ElapsedMicro());
         timer.Start();
@@ -395,40 +347,38 @@ void ScanMatcherCorrelativeFPGA::OptimizePoseCore(
         /* Update the metrics and stop the timer */
         this->mMetrics.mWaitIPTime->Observe(timer.ElapsedMicro());
 
-        /* The appropriate solution is found if the maximum score is
-         * larger than (not larger than or equal to) the score threshold */
-        const bool poseFound = scoreMax > quantizedScoreThreshold;
-        const double normalizedScore =
-            static_cast<double>(scoreMax) /
-            static_cast<double>(numOfScansTransferred) /
-            static_cast<double>((1 << this->mCommonConfig.mMapBitWidth) - 1);
         /* Compute the best sensor pose */
         const RobotPose2D<double> bestSensorPose {
             minSensorPose.mX + bestX * stepX,
             minSensorPose.mY + bestY * stepY,
             minSensorPose.mTheta + bestTheta * stepTheta };
-
         /* Compute the estimated robot pose and the likelihood value */
-        RobotPose2D<double> estimatedPose =
+        const RobotPose2D<double> estimatedPose =
             MoveBackward(bestSensorPose, scanData->RelativeSensorPose());
-        const double likelihoodValue = this->mLikelihoodFunc->Likelihood(
-            *particleMaps[i], scanData, bestSensorPose);
-        const double normalizedLikelihood =
-            likelihoodValue / scanData->NumOfScans();
+
+        /* Set the resulting score */
+        const double factor = (1 << this->mCommonConfig.mMapBitWidth) - 1;
+        const double score = static_cast<double>(scoreMax) / factor;
+        const double normalizedScore = score / numOfScansTransferred;
+
+        /* Set the resulting likelihood */
+        const double likelihood = this->mLikelihoodFunc->Likelihood(
+            gridMap, scanData, bestSensorPose);
+        const double normalizedLikelihood = likelihood / scanData->NumOfScans();
 
         /* Update the metrics */
         this->mMetrics.mScanMatchingTime->Observe(outerTimer.ElapsedMicro());
         this->mMetrics.mDiffTranslation->Observe(
-            Distance(initialPoses[i], estimatedPose));
+            Distance(initialPose, estimatedPose));
         this->mMetrics.mDiffRotation->Observe(
-            std::abs(initialPoses[i].mTheta - estimatedPose.mTheta));
+            std::abs(initialPose.mTheta - estimatedPose.mTheta));
         this->mMetrics.mMapSizeX->Observe(gridMapSize.mX);
         this->mMetrics.mMapSizeY->Observe(gridMapSize.mY);
 
-        estimatedPoses.emplace_back(std::move(estimatedPose));
-        likelihoodValues.emplace_back(likelihoodValue);
-        normalizedLikelihoodValues.emplace_back(normalizedLikelihood);
-        normalizedScores.emplace_back(normalizedScore);
+        /* Append the scan matching result */
+        results.emplace_back(initialPose, estimatedPose,
+                             normalizedLikelihood, likelihood,
+                             normalizedScore, score);
     }
 
     /* Update the metrics */
@@ -438,6 +388,8 @@ void ScanMatcherCorrelativeFPGA::OptimizePoseCore(
     this->mMetrics.mStepSizeX->Observe(stepX);
     this->mMetrics.mStepSizeY->Observe(stepY);
     this->mMetrics.mStepSizeTheta->Observe(stepTheta);
+
+    return results;
 }
 
 /* Compute the search step */

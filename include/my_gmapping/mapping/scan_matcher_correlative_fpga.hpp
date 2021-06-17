@@ -4,8 +4,6 @@
 #ifndef MY_GMAPPING_MAPPING_SCAN_MATCHER_CORRELATIVE_FPGA_HPP
 #define MY_GMAPPING_MAPPING_SCAN_MATCHER_CORRELATIVE_FPGA_HPP
 
-#include <thread>
-
 #include "my_gmapping/hw/ap_ctrl.hpp"
 #include "my_gmapping/hw/axi_simple_dma.hpp"
 #include "my_gmapping/hw/cma_memory.hpp"
@@ -197,35 +195,25 @@ public:
     ~ScanMatcherCorrelativeFPGA() = default;
 
     /* Optimize the particle poses based on the correlative scan matching */
-    void OptimizePose(
-        const std::size_t numOfParticles,
-        const std::vector<const GridMap*>& particleMaps,
-        const Sensor::ScanDataPtr<double>& scanData,
-        const std::vector<RobotPose2D<double>>& initialPoses,
-        std::vector<RobotPose2D<double>>& estimatedPoses,
-        std::vector<double>& likelihoodValues) override;
+    ScanMatchingResultVector OptimizePose(
+        const ScanMatchingQueryVector& queries,
+        const Sensor::ScanDataPtr<double>& scanData) override;
 
 private:
     /* Optimize the particle poses using the scan matcher IP core */
-    void OptimizePoseCore(
+    ScanMatchingResultVector OptimizePoseCore(
         const int coreId,
-        const std::size_t particleIdxBegin,
-        const std::size_t particleIdxEnd,
-        const std::vector<const GridMap*>& particleMaps,
-        const Sensor::ScanDataPtr<double>& scanData,
-        const std::vector<RobotPose2D<double>>& initialPoses,
-        std::vector<RobotPose2D<double>>& estimatedPoses,
-        std::vector<double>& likelihoodValues,
-        std::vector<double>& normalizedLikelihoodValues,
-        std::vector<double>& normalizedScores);
+        const std::size_t idxBegin,
+        const std::size_t idxEnd,
+        const ScanMatchingQueryVector& queries,
+        const Sensor::ScanDataPtr<double>& scanData);
 
     /* Compute the search step */
-    void ComputeSearchStep(
-        const double mapResolution,
-        const Sensor::ScanDataPtr<double>& scanData,
-        double& stepX,
-        double& stepY,
-        double& stepTheta) const;
+    void ComputeSearchStep(const double mapResolution,
+                           const Sensor::ScanDataPtr<double>& scanData,
+                           double& stepX,
+                           double& stepY,
+                           double& stepTheta) const;
 
     /* Initialize the scan matcher IP core */
     void Initialize(const int coreId);
@@ -283,8 +271,6 @@ private:
     const double            mRangeTheta;
     /* Maximum laser scan range considered for scan matching */
     const double            mScanRangeMax;
-    /* Sub-thread to process the half of the particles */
-    std::thread             mSubThread;
 
     /* Total number of the real-time correlative-based scan matcher
      * IP cores implemented on the Zynq device */
