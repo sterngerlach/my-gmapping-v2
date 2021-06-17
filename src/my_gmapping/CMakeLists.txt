@@ -2,6 +2,7 @@
 # CMakeLists.txt
 
 target_sources(gmapping PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/bresenham.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/util.cpp)
 
 add_subdirectory(grid_map)
