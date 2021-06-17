@@ -55,7 +55,7 @@ public:
     /* Optimize particle pose by scan matching methods */
     void OptimizePose(
         const std::size_t numOfParticles,
-        const std::vector<const GridMapType*>& particleMaps,
+        const std::vector<const GridMap*>& particleMaps,
         const Sensor::ScanDataPtr<double>& scanData,
         const std::vector<RobotPose2D<double>>& initialPoses,
         std::vector<RobotPose2D<double>>& estimatedPoses,
@@ -64,7 +64,7 @@ public:
 private:
     /* Optimize particle pose by scan matching methods */
     void OptimizePoseCore(
-        const GridMapInterfaceType& gridMap,
+        const GridMapInterface& gridMap,
         const Sensor::ScanDataPtr<double>& scanData,
         const RobotPose2D<double>& initialPose,
         RobotPose2D<double>& estimatedPose,

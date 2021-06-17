@@ -59,7 +59,7 @@ ScanMatcherHillClimbing::ScanMatcherHillClimbing(
 
 /* Optimize pose by scan matching methods */
 void ScanMatcherHillClimbing::OptimizePoseCore(
-    const GridMapInterfaceType& gridMap,
+    const GridMapInterface& gridMap,
     const Sensor::ScanDataPtr<double>& scanData,
     const RobotPose2D<double>& initialPose,
     RobotPose2D<double>& estimatedPose,
@@ -150,7 +150,7 @@ void ScanMatcherHillClimbing::OptimizePoseCore(
 /* Optimize poses for multiple particles by scan matching methods */
 void ScanMatcherHillClimbing::OptimizePose(
     std::size_t numOfParticles,
-    const std::vector<const GridMapType*>& particleMaps,
+    const std::vector<const GridMap*>& particleMaps,
     const Sensor::ScanDataPtr<double>& scanData,
     const std::vector<RobotPose2D<double>>& initialPoses,
     std::vector<RobotPose2D<double>>& estimatedPoses,
