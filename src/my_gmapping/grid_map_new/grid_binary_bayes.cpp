@@ -321,7 +321,7 @@ std::uint16_t GridBinaryBayes::ProbabilityToValue(const double prob)
     if (prob > ProbabilityMax)
         return ValueMax;
 
-    return MyLidarGraphSlam::ProbabilityToValue(
+    return MyGMapping::ProbabilityToValue(
         prob, ValueMin, ValueMax, ProbabilityMin, ProbabilityMax);
 }
 
@@ -335,7 +335,7 @@ double GridBinaryBayes::ProbabilityToOdds(const double prob)
     if (prob > ProbabilityMax)
         return ProbabilityMax / (1.0 - ProbabilityMax);
 
-    return MyLidarGraphSlam::ProbabilityToOdds(prob);
+    return MyGMapping::ProbabilityToOdds(prob);
 }
 
 /* Compute the probability value from the odds */
@@ -345,7 +345,7 @@ double GridBinaryBayes::OddsToProbability(const double odds)
         return UnknownProbability;
 
     /* Compute the probability value from the odds */
-    const double prob = MyLidarGraphSlam::OddsToProbability(odds);
+    const double prob = MyGMapping::OddsToProbability(odds);
     /* Clamp the probability value */
     const double clamped = std::clamp(prob, ProbabilityMin, ProbabilityMax);
 

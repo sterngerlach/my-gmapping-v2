@@ -339,7 +339,7 @@ std::uint16_t GridCounted::ProbabilityToValue(const double prob)
     if (prob > ProbabilityMax)
         return ValueMax;
 
-    return MyLidarGraphSlam::ProbabilityToValue(
+    return MyGMapping::ProbabilityToValue(
         prob, ValueMin, ValueMax, ProbabilityMin, ProbabilityMax);
 }
 
