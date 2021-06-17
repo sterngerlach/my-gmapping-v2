@@ -67,7 +67,7 @@ public:
     GridMap& operator=(const GridMap<U>& other);
 
     /* Initialize with the number of rows and columns */
-    void Initialize(const double resolution, const int log2BlockSize,
+    void Initialize(const double resolution, const int blockSize,
                     const int desiredRows, const int desiredCols);
     /* Reset the grid values to unknown */
     void ResetValues();

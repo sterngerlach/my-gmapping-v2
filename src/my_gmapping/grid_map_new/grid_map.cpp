@@ -59,11 +59,7 @@ GridMap<T>::GridMap(const double resolution, const int blockSize,
     Assert(desiredRows > 0);
     Assert(desiredCols > 0);
 
-    /* Compute the base-2 logarithm of the block size */
-    const int powerOf2 = ToNearestPowerOf2(blockSize);
-    const int log2BlockSize = __builtin_ctz(powerOf2);
-
-    this->Initialize(resolution, log2BlockSize, desiredRows, desiredCols);
+    this->Initialize(resolution, blockSize, desiredRows, desiredCols);
 }
 
 /* Constructor with the width and height */
@@ -82,15 +78,11 @@ GridMap<T>::GridMap(const double resolution, const int blockSize,
     Assert(width > 0.0);
     Assert(height > 0.0);
 
-    /* Compute the base-2 logarithm of the block size */
-    const int powerOf2 = ToNearestPowerOf2(blockSize);
-    const int log2BlockSize = __builtin_ctz(powerOf2);
-
     /* Compute the number of desired rows and columns */
     const int desiredRows = static_cast<int>(std::ceil(height / resolution));
     const int desiredCols = static_cast<int>(std::ceil(width / resolution));
 
-    this->Initialize(resolution, log2BlockSize, desiredRows, desiredCols);
+    this->Initialize(resolution, blockSize, desiredRows, desiredCols);
 }
 
 /* Constructor with the number of block rows, block columns,
@@ -219,9 +211,13 @@ GridMap<T>& GridMap<T>::operator=(GridMap&& other) noexcept
 
 /* Initialize with the number of rows and columns */
 template <typename T>
-void GridMap<T>::Initialize(const double resolution, const int log2BlockSize,
+void GridMap<T>::Initialize(const double resolution, const int blockSize,
                             const int desiredRows, const int desiredCols)
 {
+    /* Compute the base-2 logarithm of the block size */
+    const int powerOf2 = ToNearestPowerOf2(blockSize);
+    const int log2BlockSize = __builtin_ctz(powerOf2);
+
     /* Set the size of the blocks */
     this->mLog2BlockSize = log2BlockSize;
     this->mBlockSize = 1 << log2BlockSize;
