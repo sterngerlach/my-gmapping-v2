@@ -39,7 +39,7 @@ public:
 
     /* Calculate observation likelihood */
     virtual double Likelihood(
-        const GridMapInterfaceType& gridMap,
+        const GridMapInterface& gridMap,
         const Sensor::ScanDataPtr<double>& scanData,
         const RobotPose2D<double>& sensorPose) = 0;
 };

@@ -29,7 +29,7 @@ public:
 
     /* Calculate observation likelihood */
     double Likelihood(
-        const GridMapInterfaceType& gridMap,
+        const GridMapInterface& gridMap,
         const Sensor::ScanDataPtr<double>& scanData,
         const RobotPose2D<double>& sensorPose) override;
 

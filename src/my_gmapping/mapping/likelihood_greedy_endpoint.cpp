@@ -39,11 +39,11 @@ LikelihoodGreedyEndpoint::LikelihoodGreedyEndpoint(
 /* Calculate observation likelihood based on squared distance
  * between scan point and matched cell position */
 double LikelihoodGreedyEndpoint::Likelihood(
-    const GridMapInterfaceType& gridMap,
+    const GridMapInterface& gridMap,
     const Sensor::ScanDataPtr<double>& scanData,
     const RobotPose2D<double>& sensorPose)
 {
-    double sumLikelihoodValue = 0.0;
+    double likelihoodSum = 0.0;
 
     const double minRange = std::max(
         this->mMinUsableRange, scanData->MinRange());
@@ -52,7 +52,7 @@ double LikelihoodGreedyEndpoint::Likelihood(
 
     /* Compute the grid cell index corresponding to the sensor pose */
     const Point2D<int> sensorPoseIdx =
-        gridMap.MapCoordinateToCellIndex(sensorPose.mX, sensorPose.mY);
+        gridMap.PositionToIndex(sensorPose.mX, sensorPose.mY);
 
     /* Compute the grid cell index range of the local map */
     const int localMapRadius = this->mLocalMapSize / 2;
@@ -74,26 +74,21 @@ double LikelihoodGreedyEndpoint::Likelihood(
         scanData->HitAndMissedPoint(sensorPose, i, this->mHitAndMissedCellDist,
                                     hitPoint, missedPoint);
 
-        const Point2D<int> hitPointIdx =
-            gridMap.MapCoordinateToCellIndex(hitPoint);
-        const Point2D<int> missedPointIdx =
-            gridMap.MapCoordinateToCellIndex(missedPoint);
+        const Point2D<int> hitIdx =
+            gridMap.PositionToIndex(hitPoint.mX, hitPoint.mY);
+        const Point2D<int> missedIdx =
+            gridMap.PositionToIndex(missedPoint.mX, missedPoint.mY);
 
         /* Search the best cell index from the window */
-        const double unknownVal = gridMap.UnknownValue();
-        double maxLikelihood = this->mDefaultLikelihood;
+        const double unknownProb = gridMap.UnknownProbability();
+        double likelihoodMax = this->mDefaultLikelihood;
 
         for (int ky = -this->mKernelSize; ky <= this->mKernelSize; ++ky) {
             for (int kx = -this->mKernelSize; kx <= this->mKernelSize; ++kx) {
-                const Point2D<int> hitIdx {
-                    hitPointIdx.mX + kx, hitPointIdx.mY + ky };
-                const double hitCellVal =
-                    gridMap.Value(hitIdx, unknownVal);
-
-                const Point2D<int> missedIdx {
-                    missedPointIdx.mX + kx, missedPointIdx.mY + ky };
-                const double missedCellVal =
-                    gridMap.Value(missedIdx, unknownVal);
+                const double hitProb = gridMap.ProbabilityOr(
+                    hitIdx.mY + ky, hitIdx.mX + kx, unknownProb);
+                const double missProb = gridMap.ProbabilityOr(
+                    missedIdx.mY + ky, missedIdx.mX + kx, unknownProb);
 
                 /* Check if the cell is inside of the local map */
                 const bool hitInside = hitIdx.mX >= localMapIdxMin.mX &&
@@ -111,38 +106,38 @@ double LikelihoodGreedyEndpoint::Likelihood(
 
                 /* Skip if cell contains unknown occupancy probability */
                 if (!this->mUseLocalMap &&
-                    (hitCellVal == unknownVal || missedCellVal == unknownVal))
+                    (hitProb == unknownProb || missProb == unknownProb))
                     continue;
 
                 /* Skip if the occupancy probability of the cell
                  * that is assumed to be hit is less than the threshold or
                  * the occupancy probability of the missed cell is greater
                  * than the threshold */
-                if (hitCellVal < this->mOccupancyThreshold ||
-                    missedCellVal > this->mOccupancyThreshold)
+                if (hitProb < this->mOccupancyThreshold ||
+                    missProb > this->mOccupancyThreshold)
                     continue;
 
                 /* Retrieve the likelihood value using the lookup table */
                 const int idxX = this->mKernelSize + kx;
                 const int idxY = this->mKernelSize + ky;
                 const int tableIdx = idxY * (2 * this->mKernelSize + 1) + idxX;
-                const double likelihoodValue = this->mLikelihoodTable[tableIdx];
+                const double likelihood = this->mLikelihoodTable[tableIdx];
 
                 /* Update the maximum likelihood value */
-                maxLikelihood = std::max(maxLikelihood, likelihoodValue);
+                likelihoodMax = std::max(likelihoodMax, likelihood);
             }
         }
 
         /* Add to the scan matching score value
          * Score represents the log-likelihood of the observation */
-        sumLikelihoodValue += maxLikelihood;
+        likelihoodSum += likelihoodMax;
     }
 
     /* Scale the observation likelihood
      * to prevent underflow in weight computation */
-    sumLikelihoodValue *= this->mLikelihoodScale;
+    likelihoodSum *= this->mLikelihoodScale;
 
-    return sumLikelihoodValue;
+    return likelihoodSum;
 }
 
 /* Setup the lookup table for the likelihood value */
