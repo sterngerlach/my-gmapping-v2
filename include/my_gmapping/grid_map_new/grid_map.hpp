@@ -69,6 +69,10 @@ public:
     /* Initialize with the number of rows and columns */
     void Initialize(const double resolution, const int blockSize,
                     const int desiredRows, const int desiredCols);
+    /* Initialize with the size and the position offset */
+    void Initialize(const double resolution, const int blockSize,
+                    const int desiredRows, const int desiredCols,
+                    const double offsetX, const double offsetY);
     /* Reset the grid values to unknown */
     void ResetValues();
 

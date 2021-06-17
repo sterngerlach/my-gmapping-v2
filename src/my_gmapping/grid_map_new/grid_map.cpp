@@ -237,6 +237,35 @@ void GridMap<T>::Initialize(const double resolution, const int blockSize,
     this->mGeometry.Initialize(resolution, rows, cols);
 }
 
+/* Initialize with the size and the position offset */
+template <typename T>
+void GridMap<T>::Initialize(const double resolution, const int blockSize,
+                            const int desiredRows, const int desiredCols,
+                            const double offsetX, const double offsetY)
+{
+    /* Compute the base-2 logarithm of the block size */
+    const int powerOf2 = ToNearestPowerOf2(blockSize);
+    const int log2BlockSize = __builtin_ctz(powerOf2);
+
+    /* Set the size of the blocks */
+    this->mLog2BlockSize = log2BlockSize;
+    this->mBlockSize = 1 << log2BlockSize;
+
+    /* Compute the number of blocks */
+    this->mBlockRows = (desiredRows + this->mBlockSize - 1)
+                       >> this->mLog2BlockSize;
+    this->mBlockCols = (desiredCols + this->mBlockSize - 1)
+                       >> this->mLog2BlockSize;
+
+    /* Allocate the storage for the blocks */
+    this->Allocate();
+
+    /* Initialize the geometric information of the grid map */
+    const int rows = this->mBlockRows << this->mLog2BlockSize;
+    const int cols = this->mBlockCols << this->mLog2BlockSize;
+    this->mGeometry.Initialize(resolution, rows, cols, offsetX, offsetY);
+}
+
 /* Reset to the initial state */
 template <typename T>
 void GridMap<T>::Reset()
