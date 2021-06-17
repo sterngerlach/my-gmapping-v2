@@ -168,6 +168,8 @@ private:
 private:
     /* Total number of the processed input data */
     int                     mProcessCount;
+    /* Resolution of the grid map */
+    const double            mResolution;
     /* Collection of the particles */
     std::vector<Particle>   mParticles;
     /* Motion model to sample the particle poses using the odometry */

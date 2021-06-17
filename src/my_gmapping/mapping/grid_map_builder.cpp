@@ -104,6 +104,7 @@ GridMapBuilder::GridMapBuilder(
     const double resampleThreshold,
     const double degenerationThreshold) :
     mProcessCount(0),
+    mResolution(mapCellSize),
     mMotionModel(std::move(motionModel)),
     mLikelihoodFunc(std::move(likelihoodFunc)),
     mScanMatcher(std::move(scanMatcher)),
@@ -153,8 +154,8 @@ GridMapBuilder::GridMapBuilder(
     this->mParticles.reserve(numOfParticles);
 
     /* Create root trajectory node and initial map */
-    GridMapType initialMap { mapCellSize, 0.0, 0.0, 0.0, 0.0 };
-    GridMapType initialLatestMap { mapCellSize, 0.0, 0.0, 0.0, 0.0 };
+    GridMap initialMap;
+    GridMap initialLatestMap;
     const double initialWeight = 1.0 / static_cast<double>(numOfParticles);
 
     /* Insert particles */
@@ -220,15 +221,22 @@ bool GridMapBuilder::ProcessScan(
 
     /* Sample the particle poses from the odometry data
      * Update the current particle pose */
-    for (auto& currentParticle : this->mParticles)
-        currentParticle.Pose() = this->mMotionModel->SamplePose(
-            currentParticle.Pose(), relPoseFromLastMapUpdate);
+    for (auto& particle : this->mParticles)
+        particle.Pose() = this->mMotionModel->SamplePose(
+            particle.Pose(), relPoseFromLastMapUpdate);
 
-    /* Update the minimum position of the grid map */
-    if (isFirstScan)
-        for (auto& currentParticle : this->mParticles)
-            currentParticle.Map().SetMinPos(
-                currentParticle.Pose().mX, currentParticle.Pose().mY);
+    /* Initialize the grid map and adjust the positional offset */
+    if (isFirstScan) {
+        for (auto& particle : this->mParticles) {
+            const int blockSize = 1 << 4;
+            particle.Map().Initialize(
+                this->mResolution, blockSize, blockSize, blockSize,
+                particle.Pose().mX, particle.Pose().mY);
+            particle.LatestMap().Initialize(
+                this->mResolution, blockSize, blockSize, blockSize,
+                particle.Pose().mX, particle.Pose().mY);
+        }
+    }
 
     /* Update the total processing time for the particle sampling */
     this->mMetrics.mSamplingTime->Observe(timer.ElapsedMicro());
@@ -379,7 +387,7 @@ void GridMapBuilder::ExecuteScanMatching(
     estimatedPoses.reserve(numOfParticles);
 
     /* Setup scan matching inputs */
-    std::vector<const GridMapType*> particleMaps;
+    std::vector<const GridMap*> particleMaps;
     particleMaps.reserve(numOfParticles);
     std::vector<RobotPose2D<double>> initialPoses;
     initialPoses.reserve(numOfParticles);
