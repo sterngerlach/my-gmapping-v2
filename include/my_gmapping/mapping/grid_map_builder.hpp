@@ -229,22 +229,22 @@ private:
  */
 
 /* Compute the maximum of a 'winSize' pixel wide row at each pixel */
-void SlidingWindowMaxRow(const GridMapType& gridMap,
+void SlidingWindowMaxRow(const GridMap& gridMap,
                          const int winSize,
-                         const Point2D<int>& gridCellIdxMin,
-                         ConstMapType& intermediateMap);
+                         const Point2D<int>& idxMin,
+                         ConstMap& intermediateMap);
 
 /* Compute the maximum of a 'winSize' pixel wide column at each pixel */
-void SlidingWindowMaxCol(const ConstMapType& intermediateMap,
+void SlidingWindowMaxCol(const ConstMap& intermediateMap,
                          const int winSize,
-                         ConstMapType& precompMap);
+                         ConstMap& precompMap);
 
 /* Precompute grid map for efficiency */
-void PrecomputeGridMap(const GridMapType& gridMap,
+void PrecomputeGridMap(const GridMap& gridMap,
                        const int winSize,
-                       const Point2D<int>& gridCellIdxMin,
-                       ConstMapType& intermediateMap,
-                       ConstMapType& precompMap);
+                       const Point2D<int>& idxMin,
+                       ConstMap& intermediateMap,
+                       ConstMap& precompMap);
 
 } /* namespace Mapping */
 } /* namespace MyGMapping */

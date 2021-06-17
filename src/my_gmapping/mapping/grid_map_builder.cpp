@@ -612,115 +612,104 @@ bool GridMapBuilder::CheckDegeneration(
  */
 
 /* Compute the maximum of a 'winSize' pixel wide row at each pixel */
-void SlidingWindowMaxRow(const GridMapType& gridMap,
+void SlidingWindowMaxRow(const GridMap& gridMap,
                          const int winSize,
-                         const Point2D<int>& gridCellIdxMin,
-                         ConstMapType& intermediateMap)
+                         const Point2D<int>& idxMin,
+                         ConstMap& intermediateMap)
 {
-    /* Each cell in the grid map stores an occupancy probability value
-     * using the data type `StorageType` (defined as std::uint16_t) */
-    using StorageType = GridMapType::StorageType;
+    /* Each grid cell in the grid map stores an occupancy probability value
+     * which is discretized to the unsigned integer (std::uint16_t) */
+    using ValueType = GridMap::GridType::ValueType;
 
     /* Compute the maximum for each column */
-    const StorageType unknownRawValue = gridMap.UnknownRawValue();
+    const ValueType unknownValue = gridMap.UnknownValue();
     int colIdx = 0;
 
-    std::function<StorageType(int)> inFunc =
-        [&colIdx, &gridMap, &gridCellIdxMin, unknownRawValue](int rowIdx) {
-        return gridMap.RawValue(gridCellIdxMin.mX + colIdx,
-                                gridCellIdxMin.mY + rowIdx,
-                                unknownRawValue);
-    };
+    std::function<ValueType(int)> inFunc =
+        [&colIdx, &gridMap, &idxMin, unknownValue](int rowIdx) {
+        return gridMap.ValueOr(idxMin.mY + rowIdx,
+                               idxMin.mX + colIdx,
+                               unknownValue); };
 
-    std::function<void(int, StorageType)> outFunc =
-        [&colIdx, &gridMap, &gridCellIdxMin, &intermediateMap, unknownRawValue]
-        (int rowIdx, StorageType maxValue) {
-        const Point2D<int> patchIdx = gridMap.CellIndexToPatchIndex(
-            gridCellIdxMin.mX + colIdx, gridCellIdxMin.mY + rowIdx);
-        const bool isAllocated = gridMap.PatchIsAllocated(patchIdx);
+    std::function<void(int, ValueType)> outFunc =
+        [&colIdx, &idxMin, &intermediateMap, unknownValue](
+            int rowIdx, ValueType maxValue) {
+        intermediateMap.SetValueUnchecked(rowIdx, colIdx, maxValue); };
 
-        if (isAllocated)
-            intermediateMap.SetRawValue(colIdx, rowIdx, maxValue);
-    };
-
-    const int numOfGridCellsX = intermediateMap.NumCellsX();
-    const int numOfGridCellsY = intermediateMap.NumCellsY();
+    const int rows = intermediateMap.Rows();
+    const int cols = intermediateMap.Cols();
 
     /* Apply the sliding window maximum function */
-    for (colIdx = 0; colIdx < numOfGridCellsX; ++colIdx)
-        SlidingWindowMax(inFunc, outFunc, numOfGridCellsY, winSize);
+    for (colIdx = 0; colIdx < cols; ++colIdx)
+        SlidingWindowMax(inFunc, outFunc, rows, winSize);
 }
 
 /* Compute the maximum of a 'winSize' pixel wide column at each pixel */
-void SlidingWindowMaxCol(const ConstMapType& intermediateMap,
+void SlidingWindowMaxCol(const ConstMap& intermediateMap,
                          const int winSize,
-                         ConstMapType& precompMap)
+                         ConstMap& precompMap)
 {
-    /* Each cell in the grid map stores an occupancy probability value
-     * using the data type `StorageType` (defined as std::uint16_t) */
-    using StorageType = GridMapType::StorageType;
+    /* Make sure that the resulting map has the same size
+     * as the intermediate map */
+    Assert(precompMap.BlockRows() == intermediateMap.BlockRows());
+    Assert(precompMap.BlockCols() == intermediateMap.BlockCols());
+
+    /* Each grid cell in the grid map stores an occupancy probability value
+     * which is discretized to the unsigned integer (std::uint16_t) */
+    using ValueType = GridMap::GridType::ValueType;
 
     /* Compute the maximum for each row */
-    const StorageType unknownRawValue = intermediateMap.UnknownRawValue();
+    const ValueType unknownValue = intermediateMap.UnknownValue();
     int rowIdx = 0;
 
-    std::function<StorageType(int)> inFunc =
-        [&rowIdx, &intermediateMap, unknownRawValue](int colIdx) {
-        return intermediateMap.RawValue(colIdx, rowIdx, unknownRawValue);
-    };
+    std::function<ValueType(int)> inFunc =
+        [&rowIdx, &intermediateMap, unknownValue](int colIdx) {
+        return intermediateMap.ValueOr(rowIdx, colIdx, unknownValue); };
 
-    std::function<void(int, StorageType)> outFunc =
-        [&rowIdx, &intermediateMap, &precompMap, unknownRawValue]
-        (int colIdx, StorageType maxValue) {
-        const Point2D<int> patchIdx =
-            intermediateMap.CellIndexToPatchIndex(colIdx, rowIdx);
-        const bool isAllocated = intermediateMap.PatchIsAllocated(patchIdx);
+    std::function<void(int, ValueType)> outFunc =
+        [&rowIdx, &precompMap, unknownValue](
+            int colIdx, ValueType maxValue) {
+        precompMap.SetValueUnchecked(rowIdx, colIdx, maxValue); };
 
-        if (isAllocated)
-            precompMap.SetRawValue(colIdx, rowIdx, maxValue);
-    };
-
-    const int numOfGridCellsX = intermediateMap.NumCellsX();
-    const int numOfGridCellsY = intermediateMap.NumCellsY();
+    const int rows = precompMap.Rows();
+    const int cols = precompMap.Cols();
 
     /* Apply the sliding window maximum function */
-    for (rowIdx = 0; rowIdx < numOfGridCellsY; ++rowIdx)
-        SlidingWindowMax(inFunc, outFunc, numOfGridCellsX, winSize);
+    for (rowIdx = 0; rowIdx < rows; ++rowIdx)
+        SlidingWindowMax(inFunc, outFunc, cols, winSize);
 }
 
 /* Precompute grid map for efficiency */
-void PrecomputeGridMap(const GridMapType& gridMap,
+void PrecomputeGridMap(const GridMap& gridMap,
                        const int winSize,
-                       const Point2D<int>& gridCellIdxMin,
-                       ConstMapType& intermediateMap,
-                       ConstMapType& precompMap)
+                       const Point2D<int>& idxMin,
+                       ConstMap& intermediateMap,
+                       ConstMap& precompMap)
 {
     /* Check if the resulting grid map size is same as the intermediate map */
-    Assert(intermediateMap.NumCellsX() == precompMap.NumCellsX());
-    Assert(intermediateMap.NumCellsY() == precompMap.NumCellsY());
+    Assert(intermediateMap.Rows() == precompMap.Rows());
+    Assert(intermediateMap.Cols() == precompMap.Cols());
     /* Check if the minimum grid cell index is inside the grid map */
-    Assert(gridCellIdxMin.mX < gridMap.NumCellsX());
-    Assert(gridCellIdxMin.mY < gridMap.NumCellsY());
+    Assert(idxMin.mY >= 0 && idxMin.mY < gridMap.Rows());
+    Assert(idxMin.mX >= 0 && idxMin.mX < gridMap.Cols());
     /* Check if the maximum grid cell index is inside the grid map */
-    Assert(gridCellIdxMin.mX + precompMap.NumCellsX() > 0);
-    Assert(gridCellIdxMin.mY + precompMap.NumCellsY() > 0);
+    Assert(idxMin.mY + precompMap.Rows() > 0);
+    Assert(idxMin.mX + precompMap.Cols() > 0);
 
     /* Each pixel in the `precompMap` stores the maximum of the
      * occupancy probability values of 'winSize' * 'winSize'
      * box of pixels beginning there */
 
     /* Store the maximum of the 'winSize' pixel wide row */
-    SlidingWindowMaxRow(gridMap, winSize, gridCellIdxMin, intermediateMap);
+    SlidingWindowMaxRow(gridMap, winSize, idxMin, intermediateMap);
     /* Store the maximum of the 'winSize' pixel wide column */
     SlidingWindowMaxCol(intermediateMap, winSize, precompMap);
 
-    /* Set the minimum position of the `precompMap` and `intermediateMap`
-     * Note that the GridMap<T>::CellIndexToMapCoordinate() returns the
-     * minimum position of the given grid cell */
-    const Point2D<double> minPos =
-        gridMap.CellIndexToMapCoordinate(gridCellIdxMin);
-    intermediateMap.SetMinPos(minPos);
-    precompMap.SetMinPos(minPos);
+    /* Adjust the coordinate systems to make `minPos` correspond to
+     * the origin grid cell (0, 0) */
+    const auto minPos = gridMap.IndexToPosition(idxMin.mY, idxMin.mX);
+    intermediateMap.SetPosOffset(minPos.mX, minPos.mY);
+    precompMap.SetPosOffset(minPos.mX, minPos.mY);
 }
 
 } /* namespace Mapping */
