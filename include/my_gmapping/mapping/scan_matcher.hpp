@@ -22,6 +22,73 @@ namespace Mapping {
 class ScanMatcher;
 using ScanMatcherPtr = std::unique_ptr<ScanMatcher>;
 
+/*
+ * ScanMatchingQuery struct holds the necessary information for performing
+ * scan-to-map scan matching, such as an initial robot pose in a world
+ * coordinate frame and a grid map
+ */
+struct ScanMatchingQuery final
+{
+    /* Constructor */
+    ScanMatchingQuery(const GridMap& pGridMap,
+                      const RobotPose2D<double>& initialPose) :
+        mGridMap(pGridMap),
+        mInitialPose(initialPose) { }
+
+    /* Destructor */
+    ~ScanMatchingQuery() = default;
+
+    /* Grid map */
+    const GridMap&                    mGridMap;
+    /* Initial robot pose in a world coordinate frame */
+    const RobotPose2D<double>         mInitialPose;
+};
+
+/* Vector of the scan matching query */
+using ScanMatchingQueryVector = std::vector<ScanMatchingQuery>;
+
+/*
+ * ScanMatchingResult struct holds the details of the scan matching result
+ */
+struct ScanMatchingResult
+{
+    /* Default constructor */
+    ScanMatchingResult() = default;
+
+    /* Constructor */
+    ScanMatchingResult(const RobotPose2D<double>& initialPose,
+                        const RobotPose2D<double>& estimatedPose,
+                        const double normalizedLikelihood,
+                        const double likelihood,
+                        const double normalizedScore,
+                        const double score) :
+        mInitialPose(initialPose),
+        mEstimatedPose(estimatedPose),
+        mNormalizedLikelihood(normalizedLikelihood),
+        mLikelihood(likelihood),
+        mNormalizedScore(normalizedScore),
+        mScore(score) { }
+
+    /* Destructor */
+    ~ScanMatchingResult() = default;
+
+    /* Initial robot pose in a world coordinate frame */
+    RobotPose2D<double> mInitialPose;
+    /* Estimated robot pose in a world coordinate frame */
+    RobotPose2D<double> mEstimatedPose;
+    /* Normalized likelihood value */
+    double              mNormalizedLikelihood;
+    /* Likelihood value */
+    double              mLikelihood;
+    /* Normalized score value */
+    double              mNormalizedScore;
+    /* Score value */
+    double              mScore;
+};
+
+/* Vector of the scan matching summary */
+using ScanMatchingResultVector = std::vector<ScanMatchingResult>;
+
 class ScanMatcher
 {
 public:
@@ -34,14 +101,10 @@ public:
     /* Retrieve the name of this scan matcher */
     inline const std::string& Name() const { return this->mName; }
 
-    /* Optimize particle pose by scan matching methods */
-    virtual void OptimizePose(
-        const std::size_t numOfParticles,
-        const std::vector<const GridMap*>& particleMaps,
-        const Sensor::ScanDataPtr<double>& scanData,
-        const std::vector<RobotPose2D<double>>& initialPoses,
-        std::vector<RobotPose2D<double>>& estimatedPoses,
-        std::vector<double>& likelihoodValues) = 0;
+    /* Optimize particle poses by scan matching */
+    virtual ScanMatchingResultVector OptimizePose(
+        const ScanMatchingQueryVector& queries,
+        const Sensor::ScanDataPtr<double>& scanData) = 0;
 
 protected:
     /* Name of this scan matcher */
