@@ -53,14 +53,14 @@ public:
 
     /* Compute a covariance matrix in a world coordinate frame */
     Eigen::Matrix3d ComputeCovariance(
-        const GridMapInterfaceType& gridMap,
+        const GridMapInterface& gridMap,
         const Sensor::ScanDataPtr<double>& scanData,
         const RobotPose2D<double>& sensorPose) const;
 
     /* Compute a Hessian matrix using a gradient of a smoothed map function
      * with respect to the sensor pose in a world coordinate frame */
     Eigen::Matrix3d ComputeHessian(
-        const GridMapInterfaceType& gridMap,
+        const GridMapInterface& gridMap,
         const Sensor::ScanDataPtr<double>& scanData,
         const RobotPose2D<double>& sensorPose) const;
 
@@ -79,7 +79,7 @@ public:
     /* Get the four occupancy probability values at the integer coordinates
      * closest to the specified grid cell indices in floating-point */
     MapValues GetClosestMapValues(
-        const GridMapInterfaceType& gridMap,
+        const GridMapInterface& gridMap,
         const Point2D<double>& gridCellIdx) const;
 
 private:

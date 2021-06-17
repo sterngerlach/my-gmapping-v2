@@ -34,7 +34,7 @@ double CovarianceEstimator::MapValues::BilinearInterpolation() const
 
 /* Compute a covariance matrix in a world coordinate frame */
 Eigen::Matrix3d CovarianceEstimator::ComputeCovariance(
-    const GridMapInterfaceType& gridMap,
+    const GridMapInterface& gridMap,
     const Sensor::ScanDataPtr<double>& scanData,
     const RobotPose2D<double>& sensorPose) const
 {
@@ -51,14 +51,14 @@ Eigen::Matrix3d CovarianceEstimator::ComputeCovariance(
 /* Compute a Hessian matrix using a gradient of a smoothed map function
  * with respect to the sensor pose in a world coordinate frame */
 Eigen::Matrix3d CovarianceEstimator::ComputeHessian(
-    const GridMapInterfaceType& gridMap,
+    const GridMapInterface& gridMap,
     const Sensor::ScanDataPtr<double>& scanData,
     const RobotPose2D<double>& sensorPose) const
 {
     /* Compute an approximated Hessian matrix and a residual vector */
     Eigen::Matrix3d hessianMat = Eigen::Matrix3d::Zero();
 
-    const double reciprocalResolution = 1.0 / gridMap.CellSize();
+    const double reciprocalResolution = 1.0 / gridMap.Resolution();
     const std::size_t numOfScans = scanData->NumOfScans();
 
     for (std::size_t i = 0; i < numOfScans; ++i) {
@@ -66,7 +66,7 @@ Eigen::Matrix3d CovarianceEstimator::ComputeHessian(
         const Point2D<double> hitPoint =
             scanData->HitPoint(sensorPose, i);
         const Point2D<double> floatingIdx =
-            gridMap.MapCoordinateToCellIndexFloat(hitPoint);
+            gridMap.PositionToIndexF(hitPoint.mX, hitPoint.mY);
         /* Get the map values closest to the floating-point index */
         const auto mapValues = this->GetClosestMapValues(gridMap, floatingIdx);
 
@@ -137,7 +137,7 @@ Eigen::Vector2d CovarianceEstimator::ComputeScaledMapGradMapPoint(
 /* Get the four occupancy probability values at the integer coordinates
  * closest to the specified grid cell indices in floating-point */
 CovarianceEstimator::MapValues CovarianceEstimator::GetClosestMapValues(
-    const GridMapInterfaceType& gridMap,
+    const GridMapInterface& gridMap,
     const Point2D<double>& gridCellIdx) const
 {
     /* Obtain the closest integer coordinates */
@@ -150,14 +150,14 @@ CovarianceEstimator::MapValues CovarianceEstimator::GetClosestMapValues(
      * could be out-of-bounds */
     const int xc0 = std::max(static_cast<int>(x0), 0);
     const int yc0 = std::max(static_cast<int>(y0), 0);
-    const int xc1 = std::min(xc0 + 1, gridMap.NumCellsX() - 1);
-    const int yc1 = std::min(yc0 + 1, gridMap.NumCellsY() - 1);
+    const int xc1 = std::min(xc0 + 1, gridMap.Cols() - 1);
+    const int yc1 = std::min(yc0 + 1, gridMap.Rows() - 1);
 
     /* Obtain the occupancy probability values at four integer coordinates */
-    const double m00 = gridMap.Value(xc0, yc0, 0.5);
-    const double m01 = gridMap.Value(xc0, yc1, 0.5);
-    const double m10 = gridMap.Value(xc1, yc0, 0.5);
-    const double m11 = gridMap.Value(xc1, yc1, 0.5);
+    const double m00 = gridMap.ProbabilityOr(yc0, xc0, 0.5);
+    const double m01 = gridMap.ProbabilityOr(yc1, xc0, 0.5);
+    const double m10 = gridMap.ProbabilityOr(yc0, xc1, 0.5);
+    const double m11 = gridMap.ProbabilityOr(yc1, xc1, 0.5);
 
     return MapValues { dx, dy, m00, m01, m10, m11 };
 }
