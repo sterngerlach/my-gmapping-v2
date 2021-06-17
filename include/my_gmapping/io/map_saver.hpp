@@ -46,6 +46,9 @@ namespace IO {
 class MapSaver
 {
 public:
+    /* Type definitions */
+    using Trajectory = std::vector<Mapping::TimeStampedPose>;
+
     /* Constructor */
     MapSaver() = default;
 
@@ -53,37 +56,30 @@ public:
     ~MapSaver() = default;
 
     /* Save the specified map */
-    bool SaveMap(const Mapping::GridMapType& gridMap,
-                 const std::vector<Mapping::TimeStampedPose>& trajectory,
+    bool SaveMap(const Mapping::GridMap& gridMap,
+                 const Trajectory& trajectory,
                  const std::string& fileName,
-                 bool drawTrajectory) const;
+                 const bool drawTrajectory) const;
 
 private:
     /* Draw the grid cells to the image */
-    void DrawMap(const Mapping::GridMapType& gridMap,
-                 const boost::gil::rgb8_view_t& mapImageView,
-                 const Point2D<int>& patchIdxMin,
-                 const Point2D<int>& mapSizeInPatches) const;
+    void DrawMap(const boost::gil::rgb8_view_t& mapImageView,
+                 const Mapping::GridMap& gridMap,
+                 const BoundingBox<int>& boundingBox) const;
 
     /* Draw the trajectory of the particle to the image */
-    void DrawTrajectory(const Mapping::GridMapType& gridMap,
-                        const std::vector<Mapping::TimeStampedPose>& trajectory,
-                        const boost::gil::rgb8_view_t& mapImageView,
-                        const Point2D<int>& gridCellIdxMin,
-                        const Point2D<int>& mapSizeInGridCells) const;
+    void DrawTrajectory(const boost::gil::rgb8_view_t& mapImageView,
+                        const Mapping::GridMap& gridMap,
+                        const Trajectory& trajectory,
+                        const BoundingBox<int>& boundingBox) const;
 
     /* Save the robot trajectory */
-    void SaveTrajectory(
-        const std::vector<Mapping::TimeStampedPose>& trajectory,
-        const std::string& fileName) const;
+    void SaveTrajectory(const Trajectory& trajectory,
+                        const std::string& fileName) const;
 
     /* Save the map metadata as JSON format */
-    void SaveMapMetadata(const double mapResolution,
-                         const int patchSize,
-                         const Point2D<int>& mapSizeInPatches,
-                         const Point2D<int>& mapSizeInGridCells,
-                         const Point2D<double>& bottomLeft,
-                         const Point2D<double>& topRight,
+    void SaveMapMetadata(const Mapping::GridMap& gridMap,
+                         const BoundingBox<int>& boundingBox,
                          const std::string& fileName) const;
 };
 

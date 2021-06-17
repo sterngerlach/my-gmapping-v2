@@ -6,6 +6,8 @@
 
 #include "my_gmapping/io/map_saver.hpp"
 
+#include "my_gmapping/bresenham.hpp"
+
 /* Declare namespaces for convenience */
 namespace gil = boost::gil;
 namespace pt = boost::property_tree;
@@ -14,36 +16,25 @@ namespace MyGMapping {
 namespace IO {
 
 /* Save the specified map */
-bool MapSaver::SaveMap(
-    const Mapping::GridMapType& gridMap,
-    const std::vector<Mapping::TimeStampedPose>& trajectory,
-    const std::string& fileName,
-    bool drawTrajectory) const
+bool MapSaver::SaveMap(const Mapping::GridMap& gridMap,
+                       const Trajectory& trajectory,
+                       const std::string& fileName,
+                       const bool drawTrajectory) const
 {
-    /* Compute the actual map size */
-    Point2D<int> patchIdxMin;
-    Point2D<int> patchIdxMax;
-    Point2D<int> gridCellIdxMin;
-    Point2D<int> gridCellIdxMax;
-    Point2D<int> mapSizeInPatches;
-    Point2D<int> mapSizeInGridCells;
-    gridMap.ComputeActualMapSize(patchIdxMin, patchIdxMax,
-                                 gridCellIdxMin, gridCellIdxMax,
-                                 mapSizeInPatches, mapSizeInGridCells);
+    /* Compute the size of the cropped grid map */
+    const BoundingBox<int> croppedBox = gridMap.CroppedBoundingBox();
 
     /* Initialize the grid map image */
-    gil::rgb8_image_t mapImage {
-        mapSizeInGridCells.mX, mapSizeInGridCells.mY };
+    gil::rgb8_image_t mapImage { croppedBox.Width(), croppedBox.Height() };
     const gil::rgb8_view_t& mapImageView = gil::view(mapImage);
     gil::fill_pixels(mapImageView, gil::rgb8_pixel_t(192, 192, 192));
 
     /* Draw the grid cells in the map */
-    this->DrawMap(gridMap, mapImageView, patchIdxMin, mapSizeInPatches);
+    this->DrawMap(mapImageView, gridMap, croppedBox);
 
     /* Draw the trajectory of the particle */
     if (drawTrajectory)
-        this->DrawTrajectory(gridMap, trajectory, mapImageView,
-                             gridCellIdxMin, mapSizeInGridCells);
+        this->DrawTrajectory(mapImageView, gridMap, trajectory, croppedBox);
 
     /* Save the map as PNG image
      * Image should be flipped upside down */
@@ -66,18 +57,7 @@ bool MapSaver::SaveMap(
     /* Save the map metadata as JSON format */
     try {
         const std::string metadataFileName = fileName + ".json";
-
-        /* GridMap<T>::CellIndexToMapCoordinate(x, y) returns
-         * the minimum position of the specified grid cell (x, y) */
-        const Point2D<double> bottomLeft =
-            gridMap.CellIndexToMapCoordinate(gridCellIdxMin);
-        const Point2D<double> topRight =
-            gridMap.CellIndexToMapCoordinate(gridCellIdxMax);
-
-        /* Save the map metadata */
-        this->SaveMapMetadata(gridMap.CellSize(), gridMap.PatchSize(),
-                              mapSizeInPatches, mapSizeInGridCells,
-                              bottomLeft, topRight, metadataFileName);
+        this->SaveMapMetadata(gridMap, croppedBox, metadataFileName);
     } catch (const pt::json_parser_error& e) {
         std::cerr << "boost::property_tree::json_parser_error occurred: "
                   << e.what() << ' '
@@ -100,94 +80,81 @@ bool MapSaver::SaveMap(
 }
 
 /* Draw the grid cells to the image */
-void MapSaver::DrawMap(const Mapping::GridMapType& gridMap,
-                       const boost::gil::rgb8_view_t& mapImageView,
-                       const Point2D<int>& patchIdxMin,
-                       const Point2D<int>& mapSizeInPatches) const
+void MapSaver::DrawMap(const boost::gil::rgb8_view_t& mapImageView,
+                       const Mapping::GridMap& gridMap,
+                       const BoundingBox<int>& boundingBox) const
 {
-    const double unknownVal = gridMap.UnknownValue();
+    /* Check that the grid map has the same size as the image */
+    Assert(mapImageView.width() == boundingBox.Width());
+    Assert(mapImageView.height() == boundingBox.Height());
 
-    for (int y = 0; y < mapSizeInPatches.mY; ++y) {
-        for (int x = 0; x < mapSizeInPatches.mX; ++x) {
-            /* Retrieve the current map patch */
-            const auto& patch = gridMap.PatchAt(
-                patchIdxMin.mX + x, patchIdxMin.mY + y);
+    const auto toGrayScale = [](const std::uint8_t value) {
+        return gil::rgb8_pixel_t(value, value, value); };
+    const auto unknownProb = gridMap.UnknownProbability();
 
-            if (!patch.IsAllocated())
+    /* Draw the grid cells to the image */
+    for (int row = boundingBox.mMin.mY; row < boundingBox.mMax.mY; ++row) {
+        for (int col = boundingBox.mMin.mX; col < boundingBox.mMax.mX; ++col) {
+            /* Get the probability value */
+            const auto prob = gridMap.ProbabilityOr(row, col, unknownProb);
+
+            /* Skip if the grid cell is unknown */
+            if (prob == unknownProb)
                 continue;
 
-            /* Draw the grid cells in the patch */
-            for (int yy = 0; yy < gridMap.PatchSize(); ++yy) {
-                for (int xx = 0; xx < gridMap.PatchSize(); ++xx) {
-                    const double gridCellVal = patch.At(xx, yy).Value();
+            /* Convert the probability to the pixel intensity */
+            const auto imageRow = static_cast<std::ptrdiff_t>(
+                row - boundingBox.mMin.mY);
+            const auto imageCol = static_cast<std::ptrdiff_t>(
+                col - boundingBox.mMin.mX);
+            const auto pixelValue = static_cast<std::uint8_t>(
+                (1.0 - prob) * 255.0);
 
-                    /* If the occupancy probability value is less than or
-                     * equal to zero, then the grid cell is not yet observed
-                     * and is in unknown state (Cell::Unknown is zero) */
-                    if (gridCellVal == unknownVal ||
-                        gridCellVal < 0.0 || gridCellVal > 1.0)
-                        continue;
-
-                    const std::ptrdiff_t idxX = static_cast<std::ptrdiff_t>(
-                        x * gridMap.PatchSize() + xx);
-                    const std::ptrdiff_t idxY = static_cast<std::ptrdiff_t>(
-                        y * gridMap.PatchSize() + yy);
-                    const std::uint8_t grayScale = static_cast<std::uint8_t>(
-                        (1.0 - gridCellVal) * 255.0);
-
-                    mapImageView(idxX, idxY) =
-                        gil::rgb8_pixel_t(grayScale, grayScale, grayScale);
-                }
-            }
+            /* Set the pixel intensity */
+            mapImageView(imageCol, imageRow) = toGrayScale(pixelValue);
         }
     }
 }
 
 /* Draw the trajectory of the particle to the image */
-void MapSaver::DrawTrajectory(
-    const Mapping::GridMapType& gridMap,
-    const std::vector<Mapping::TimeStampedPose>& trajectory,
-    const boost::gil::rgb8_view_t& mapImageView,
-    const Point2D<int>& gridCellIdxMin,
-    const Point2D<int>& mapSizeInGridCells) const
+void MapSaver::DrawTrajectory(const boost::gil::rgb8_view_t& mapImageView,
+                              const Mapping::GridMap& gridMap,
+                              const Trajectory& trajectory,
+                              const BoundingBox<int>& boundingBox) const
 {
     /* Trajectory should contain at least one node */
-    assert(!trajectory.empty());
+    if (trajectory.size() < 2)
+        return;
 
-    Point2D<int> prevGridCellIdx = gridMap.MapCoordinateToCellIndex(
+    Point2D<int> prevIdx = gridMap.PositionToIndex(
         trajectory.front().mPose.mX, trajectory.front().mPose.mY);
 
-    const Point2D<int> gridCellIdxMax {
-        gridCellIdxMin.mX + mapSizeInGridCells.mX,
-        gridCellIdxMin.mY + mapSizeInGridCells.mY };
-
     for (const auto& stampedPose : trajectory) {
-        const Point2D<int> gridCellIdx = gridMap.MapCoordinateToCellIndex(
+        const Point2D<int> currentIdx = gridMap.PositionToIndex(
             stampedPose.mPose.mX, stampedPose.mPose.mY);
         std::vector<Point2D<int>> lineIndices;
-        Bresenham(prevGridCellIdx, gridCellIdx, lineIndices);
+        Bresenham(prevIdx, currentIdx, lineIndices);
 
         for (const auto& interpolatedIdx : lineIndices) {
-            if (interpolatedIdx.mX < gridCellIdxMin.mX ||
-                interpolatedIdx.mX >= gridCellIdxMax.mX - 1 ||
-                interpolatedIdx.mY < gridCellIdxMin.mY ||
-                interpolatedIdx.mY >= gridCellIdxMax.mY - 1)
+            if (interpolatedIdx.mX < boundingBox.mMin.mX ||
+                interpolatedIdx.mX > boundingBox.mMax.mX - 1 ||
+                interpolatedIdx.mY < boundingBox.mMin.mY ||
+                interpolatedIdx.mY > boundingBox.mMax.mY - 1)
                 continue;
 
-            const int x = interpolatedIdx.mX - gridCellIdxMin.mX;
-            const int y = interpolatedIdx.mY - gridCellIdxMin.mY;
+            const int x = interpolatedIdx.mX - boundingBox.mMin.mX;
+            const int y = interpolatedIdx.mY - boundingBox.mMin.mY;
             gil::fill_pixels(gil::subimage_view(mapImageView, x, y, 2, 2),
                              gil::rgb8_pixel_t(255, 0, 0));
         }
 
-        prevGridCellIdx = gridCellIdx;
+        prevIdx = currentIdx;
     }
 }
 
 /* Save the robot trajectory */
-void MapSaver::SaveTrajectory(
-    const std::vector<Mapping::TimeStampedPose>& trajectory,
-    const std::string& fileName) const
+void MapSaver::SaveTrajectory(const Trajectory& trajectory,
+                              const std::string& fileName) const
 {
     /* Open the file (throw exception if failed) */
     std::ofstream outFile;
@@ -212,32 +179,45 @@ void MapSaver::SaveTrajectory(
 }
 
 /* Save the map metadata as JSON format */
-void MapSaver::SaveMapMetadata(
-    const double mapResolution,
-    const int patchSize,
-    const Point2D<int>& mapSizeInPatches,
-    const Point2D<int>& mapSizeInGridCells,
-    const Point2D<double>& bottomLeft,
-    const Point2D<double>& topRight,
-    const std::string& fileName) const
+void MapSaver::SaveMapMetadata(const Mapping::GridMap& gridMap,
+                               const BoundingBox<int>& boundingBox,
+                               const std::string& fileName) const
 {
-    pt::ptree jsonTree;
+    pt::ptree jsonMetadata;
 
     /* Write the map metadata */
-    jsonTree.put("Map.Resolution", mapResolution);
-    jsonTree.put("Map.PatchSize", patchSize);
-    jsonTree.put("Map.WidthInPatches", mapSizeInPatches.mX);
-    jsonTree.put("Map.HeightInPatches", mapSizeInPatches.mY);
-    jsonTree.put("Map.WidthInGridCells", mapSizeInGridCells.mX);
-    jsonTree.put("Map.HeightInGridCells", mapSizeInGridCells.mY);
+    jsonMetadata.put("Resolution", gridMap.Resolution());
+    jsonMetadata.put("Log2BlockSize", gridMap.Log2BlockSize());
+    jsonMetadata.put("BlockSize", gridMap.BlockSize());
 
-    jsonTree.put("Map.BottomLeft.X", bottomLeft.mX);
-    jsonTree.put("Map.BottomLeft.Y", bottomLeft.mY);
-    jsonTree.put("Map.TopRight.X", topRight.mX);
-    jsonTree.put("Map.TopRight.Y", topRight.mY);
+    const int rows = boundingBox.Height();
+    const int cols = boundingBox.Width();
+    const int blockRows = (rows + gridMap.BlockSize() - 1)
+                          >> gridMap.Log2BlockSize();
+    const int blockCols = (cols + gridMap.BlockSize() - 1)
+                          >> gridMap.Log2BlockSize();
+    const double height = gridMap.Resolution() * rows;
+    const double width = gridMap.Resolution() * cols;
+
+    jsonMetadata.put("Rows", rows);
+    jsonMetadata.put("Cols", cols);
+    jsonMetadata.put("BlockRows", blockRows);
+    jsonMetadata.put("BlockCols", blockCols);
+    jsonMetadata.put("Height", height);
+    jsonMetadata.put("Width", width);
+
+    const auto posMin = gridMap.IndexToPosition(
+        boundingBox.mMin.mY, boundingBox.mMin.mX);
+    const auto posMax = gridMap.IndexToPosition(
+        boundingBox.mMax.mY, boundingBox.mMax.mX);
+
+    jsonMetadata.put("PositionMin.X", posMin.mX);
+    jsonMetadata.put("PositionMin.Y", posMin.mY);
+    jsonMetadata.put("PositionMax.X", posMax.mX);
+    jsonMetadata.put("PositionMax.Y", posMax.mY);
 
     /* Save the json to the file */
-    pt::write_json(fileName, jsonTree);
+    pt::write_json(fileName, jsonMetadata);
 
     return;
 }
