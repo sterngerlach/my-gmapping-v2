@@ -585,10 +585,7 @@ void ScanMatcherCorrelativeFPGA::SendScanData(
         /* Transfer the flag only using the AXI DMA IP core */
         this->mAxiDma[coreId]->SendChannel().Transfer(
             sizeof(std::uint64_t), this->mInputData[coreId].PhysicalAddress());
-
-        /* Wait for the data transfer to complete if necessary */
-        if (this->mCommonConfig.mWaitForDmaTransfer)
-            this->mAxiDma[coreId]->SendChannel().Wait();
+        this->mAxiDma[coreId]->SendChannel().Wait();
 
         /* Update the metrics */
         this->mMetrics.mScanTransferSkip->Increment();
@@ -641,11 +638,7 @@ void ScanMatcherCorrelativeFPGA::SendScanData(
         (numOfScansTransferred + 1) * sizeof(std::uint64_t);
     this->mAxiDma[coreId]->SendChannel().Transfer(
         transferLengthInBytes, this->mInputData[coreId].PhysicalAddress());
-
-    /* Wait for the data transfer to complete by polling the status register
-     * of the AXI DMA IP core */
-    if (this->mCommonConfig.mWaitForDmaTransfer)
-        this->mAxiDma[coreId]->SendChannel().Wait();
+    this->mAxiDma[coreId]->SendChannel().Wait();
 }
 
 /* Send the grid map through AXI DMA */
@@ -678,11 +671,7 @@ void ScanMatcherCorrelativeFPGA::SendGridMap(
         (desiredBox.Height() * chunkCols + 1) * sizeof(std::uint64_t);
     this->mAxiDma[coreId]->SendChannel().Transfer(
         transferLengthInBytes, this->mInputData[coreId].PhysicalAddress());
-
-    /* Wait for the data transfer to complete by polling the status register
-     * of the AXI DMA IP core */
-    if (this->mCommonConfig.mWaitForDmaTransfer)
-        this->mAxiDma[coreId]->SendChannel().Wait();
+    this->mAxiDma[coreId]->SendChannel().Wait();
 
     /* Update the metrics */
     const int numOfChunks = desiredBox.Height() * chunkCols;
@@ -697,11 +686,7 @@ void ScanMatcherCorrelativeFPGA::ReceiveResult(
     const std::size_t receiveLengthInBytes = 2 * sizeof(std::uint64_t);
     this->mAxiDma[coreId]->RecvChannel().Transfer(
         receiveLengthInBytes, this->mOutputData[coreId].PhysicalAddress());
-
-    /* Wait for the data transfer to complete by polling the status register
-     * of the AXI DMA IP core */
-    if (this->mCommonConfig.mWaitForDmaTransfer)
-        this->mAxiDma[coreId]->RecvChannel().Wait();
+    this->mAxiDma[coreId]->RecvChannel().Wait();
 
     /* Retrieve the pointer to the CMA memory */
     volatile std::uint64_t* pOutput =
@@ -715,26 +700,19 @@ void ScanMatcherCorrelativeFPGA::ReceiveResult(
 /* Start the scan matcher IP core */
 void ScanMatcherCorrelativeFPGA::StartIPCore(const int coreId)
 {
-    const std::uint32_t apStart = ToUnderlying(AxiLiteSApCtrl::Start);
-
     /* Set the control register of the scan matcher IP core */
-    this->WriteCtrlReg(coreId, apStart);
-
+    this->WriteCtrlReg(coreId, ToUnderlying(AxiLiteSApCtrl::Start));
     /* Wait until the scan matcher IP core starts by polling the
      * control registers of the AXI4-Lite slave interface */
-    if (this->mCommonConfig.mWaitForCtrlReg)
-        while (!(this->ReadCtrlReg(coreId) & apStart));
+    while (!(this->ReadCtrlReg(coreId) & ToUnderlying(AxiLiteSApCtrl::Start)));
 }
 
 /* Wait until the scan matcher IP core is in idle state */
 void ScanMatcherCorrelativeFPGA::WaitIPCore(const int coreId)
 {
-    const std::uint32_t apIdle = ToUnderlying(AxiLiteSApCtrl::Idle);
-
     /* Wait until the scan matcher IP core is in idle state by polling the
      * control registers of the AXI4-Lite slave interface */
-    if (this->mCommonConfig.mWaitForCtrlReg)
-        while (!(this->ReadCtrlReg(coreId) & apIdle));
+    while (!(this->ReadCtrlReg(coreId) & ToUnderlying(AxiLiteSApCtrl::Idle)));
 }
 
 } /* namespace MyGMapping */

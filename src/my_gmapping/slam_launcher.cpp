@@ -279,11 +279,6 @@ std::unique_ptr<Mapping::ScanMatcher> CreateScanMatcherCorrelativeFPGA(
     const int mapChunkWidth =
         scanMatcherSettings.get<int>("MapChunkWidth");
 
-    const bool waitForControlRegister =
-        scanMatcherSettings.get<bool>("WaitForControlRegister");
-    const bool waitForDmaTransfer =
-        scanMatcherSettings.get<bool>("WaitForDmaTransfer");
-
     commonConfig.mMaxNumOfScans = maxNumOfScans;
     commonConfig.mMapResolution = mapResolution;
     commonConfig.mMaxMapSizeX = maxMapSizeX;
@@ -291,9 +286,6 @@ std::unique_ptr<Mapping::ScanMatcher> CreateScanMatcherCorrelativeFPGA(
     commonConfig.mLowResolution = lowResolution;
     commonConfig.mMapBitWidth = mapBitWidth;
     commonConfig.mMapChunkWidth = mapChunkWidth;
-
-    commonConfig.mWaitForCtrlReg = waitForControlRegister;
-    commonConfig.mWaitForDmaTransfer = waitForDmaTransfer;
 
     const std::string axiLiteSBaseAddress0 =
         scanMatcherSettings.get<std::string>("AxiLiteSBaseAddress0");

@@ -81,8 +81,6 @@
             "AxiLiteSStepTheta": "0x88"
         },
 
-        "WaitForControlRegister": "true",
-        "WaitForDmaTransfer": "true",
         "AxiLiteSBaseAddress0": "0x43C00000",
         "AxiLiteSAddressRange0": "0x10000",
         "AxiDmaBaseAddress0": "0x40400000",
