@@ -17,9 +17,7 @@
         "OccupancyThreshold": 0.45,
         "GaussianSigma": 0.05,
         "KernelSize": 1,
-        "LikelihoodScale": 0.75,
-        "UseLocalMap": "false",
-        "LocalMapSize": 256
+        "LikelihoodScale": 0.75
     },
 
     "ScanMatcherHillClimbing": {

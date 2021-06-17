@@ -20,9 +20,7 @@ public:
                              const double occupancyThreshold,
                              const double gaussianSigma,
                              const int kernelSize,
-                             const double likelihoodScale,
-                             const bool useLocalMap,
-                             const int localMapSize);
+                             const double likelihoodScale);
 
     /* Destructor */
     ~LikelihoodGreedyEndpoint() = default;
@@ -58,12 +56,6 @@ private:
     std::unique_ptr<double[]> mLikelihoodTable;
     /* Minimum likelihood value */
     double                    mDefaultLikelihood;
-
-    /* TODO: Create a cropped version of a GridMap class and get rid of this */
-    /* Flag to determine whether the cropped grid map is used */
-    const bool                mUseLocalMap;
-    /* Size of the cropped grid map (in the number of grid cells) */
-    const int                 mLocalMapSize;
 };
 
 } /* namespace Mapping */

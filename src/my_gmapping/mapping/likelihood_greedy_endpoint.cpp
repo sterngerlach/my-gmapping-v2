@@ -15,9 +15,7 @@ LikelihoodGreedyEndpoint::LikelihoodGreedyEndpoint(
     const double occupancyThreshold,
     const double gaussianSigma,
     const int kernelSize,
-    const double likelihoodScale,
-    const bool useLocalMap,
-    const int localMapSize) :
+    const double likelihoodScale) :
     LikelihoodFunction(),
     mMapResolution(mapResolution),
     mMinUsableRange(minUsableRange),
@@ -28,9 +26,7 @@ LikelihoodGreedyEndpoint::LikelihoodGreedyEndpoint(
     mKernelSize(kernelSize),
     mLikelihoodScale(likelihoodScale),
     mLikelihoodTable(nullptr),
-    mDefaultLikelihood(0.0),
-    mUseLocalMap(useLocalMap),
-    mLocalMapSize(localMapSize)
+    mDefaultLikelihood(0.0)
 {
     /* Compute the lookup table for the likelihood value */
     this->SetupLookupTable();
@@ -50,17 +46,6 @@ double LikelihoodGreedyEndpoint::Likelihood(
     const double maxRange = std::min(
         this->mMaxUsableRange, scanData->MaxRange());
 
-    /* Compute the grid cell index corresponding to the sensor pose */
-    const Point2D<int> sensorPoseIdx =
-        gridMap.PositionToIndex(sensorPose.mX, sensorPose.mY);
-
-    /* Compute the grid cell index range of the local map */
-    const int localMapRadius = this->mLocalMapSize / 2;
-    const Point2D<int> localMapIdxMin {
-        sensorPoseIdx.mX - localMapRadius, sensorPoseIdx.mY - localMapRadius };
-    const Point2D<int> localMapIdxMax {
-        sensorPoseIdx.mX + localMapRadius, sensorPoseIdx.mY + localMapRadius };
-
     for (std::size_t i = 0; i < scanData->NumOfScans(); ++i) {
         const double range = scanData->RangeAt(i);
 
@@ -71,8 +56,9 @@ double LikelihoodGreedyEndpoint::Likelihood(
          * the missed point */
         Point2D<double> hitPoint;
         Point2D<double> missedPoint;
-        scanData->HitAndMissedPoint(sensorPose, i, this->mHitAndMissedCellDist,
-                                    hitPoint, missedPoint);
+        scanData->HitAndMissedPoint(
+            sensorPose, i, this->mHitAndMissedCellDist,
+            hitPoint, missedPoint);
 
         const Point2D<int> hitIdx =
             gridMap.PositionToIndex(hitPoint.mX, hitPoint.mY);
@@ -90,23 +76,8 @@ double LikelihoodGreedyEndpoint::Likelihood(
                 const double missProb = gridMap.ProbabilityOr(
                     missedIdx.mY + ky, missedIdx.mX + kx, unknownProb);
 
-                /* Check if the cell is inside of the local map */
-                const bool hitInside = hitIdx.mX >= localMapIdxMin.mX &&
-                                       hitIdx.mY >= localMapIdxMin.mY &&
-                                       hitIdx.mX < localMapIdxMax.mX &&
-                                       hitIdx.mY < localMapIdxMax.mY;
-                const bool missedInside = missedIdx.mX >= localMapIdxMin.mX &&
-                                          missedIdx.mY >= localMapIdxMin.mY &&
-                                          missedIdx.mX < localMapIdxMax.mX &&
-                                          missedIdx.mY < localMapIdxMax.mY;
-
-                /* Skip if the cell index is out of bounds */
-                if (this->mUseLocalMap && (!hitInside || !missedInside))
-                    continue;
-
                 /* Skip if cell contains unknown occupancy probability */
-                if (!this->mUseLocalMap &&
-                    (hitProb == unknownProb || missProb == unknownProb))
+                if (hitProb == unknownProb || missProb == unknownProb)
                     continue;
 
                 /* Skip if the occupancy probability of the cell

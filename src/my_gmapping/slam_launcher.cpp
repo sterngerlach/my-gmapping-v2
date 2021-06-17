@@ -93,17 +93,10 @@ std::unique_ptr<Mapping::LikelihoodFunction> CreateLikelihoodGreedyEndpoint(
     const double likelihoodScale = jsonSettings.get<double>(
         "LikelihoodGreedyEndpoint.LikelihoodScale");
 
-    /* TODO: Get rid of these settings */
-    const bool useLocalMap = jsonSettings.get<bool>(
-        "LikelihoodGreedyEndpoint.UseLocalMap");
-    const int localMapSize = jsonSettings.get<int>(
-        "LikelihoodGreedyEndpoint.LocalMapSize");
-
     /* Create the greedy endpoint likelihood function */
     auto pLikelihoodFunc = std::make_unique<Mapping::LikelihoodGreedyEndpoint>(
         mapResolution, minUsableRange, maxUsableRange, hitAndMissedCellDist,
-        occupancyThreshold, gaussianSigma, kernelSize,
-        likelihoodScale, useLocalMap, localMapSize);
+        occupancyThreshold, gaussianSigma, kernelSize, likelihoodScale);
 
     return pLikelihoodFunc;
 }
