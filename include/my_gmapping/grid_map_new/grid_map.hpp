@@ -203,6 +203,10 @@ public:
     inline int BlockCols() const { return this->mBlockCols; }
 
 public:
+    /* Set the positional offset */
+    inline void SetPosOffset(const double offsetX, const double offsetY) {
+        this->mGeometry.SetPosOffset(offsetX, offsetY); }
+
     /* Resize the grid map given the bounding box (index range) */
     void Resize(const BoundingBox<int>& boundingBox);
     /* Resize the grid map given the bounding box */
