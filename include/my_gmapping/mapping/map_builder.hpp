@@ -45,12 +45,12 @@ public:
 
     /* Integrate the scan data to the grid map */
     /* Update the particle map using the latest scan data */
-    void UpdateGridMap(GridMapType& gridMap,
+    void UpdateGridMap(GridMap& gridMap,
                        const RobotPose2D<double>& currentPose,
                        const Sensor::ScanDataPtr<double>& scanData) const;
 
     /* Update the particle map with the multiple latest scans */
-    void UpdateLatestMap(GridMapType& latestMap,
+    void UpdateLatestMap(GridMap& latestMap,
                          const RobotPoseDeque& latestPoses,
                          const ScanDataDeque& latestScanData);
 

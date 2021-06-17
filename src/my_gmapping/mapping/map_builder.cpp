@@ -3,6 +3,8 @@
 
 #include "my_gmapping/mapping/map_builder.hpp"
 
+#include "my_gmapping/bresenham.hpp"
+
 namespace MyGMapping {
 namespace Mapping {
 
@@ -36,14 +38,14 @@ MapBuilder::MapBuilder(const double maxUsableRange,
 /* Integrate the scan data to the grid map */
 /* Update the particle map using the latest scan data */
 void MapBuilder::UpdateGridMap(
-    GridMapType& gridMap,
+    GridMap& gridMap,
     const RobotPose2D<double>& currentPose,
     const Sensor::ScanDataPtr<double>& scanData) const
 {
     /* Vector for storing missed grid cell indices
      * Specified as static variable to reduce the performance loss
      * caused by memory allocations and deallocations */
-    static std::vector<Point2D<int>> missedCellIndices;
+    static std::vector<Point2D<int>> missedIndices;
 
     /* Vector for storing hit points in the world coordinate
      * Specified as static variable to reduce the performance loss
@@ -93,46 +95,46 @@ void MapBuilder::UpdateGridMap(
     }
 
     /* Expand the map if necessary */
-    gridMap.Expand(bottomLeft.mX, topRight.mX,
-                   bottomLeft.mY, topRight.mY);
+    const BoundingBox<double> expandedBox { bottomLeft, topRight };
+    gridMap.Expand(expandedBox);
 
     /* Calculate the cell index corresponding to the sensor pose
      * since the map is updated and index might be changed */
-    const Point2D<int> sensorCellIdx =
-        gridMap.MapCoordinateToCellIndex(sensorPose.mX, sensorPose.mY);
+    const Point2D<int> sensorIdx = gridMap.PositionToIndex(
+        sensorPose.mX, sensorPose.mY);
 
     /* Integrate the scan into the particle map */
     const std::size_t numOfFilteredScans = hitPoints.size();
 
     for (std::size_t i = 0; i < numOfFilteredScans; ++i) {
         /* Compute the index of the hit cell */
-        const Point2D<int> hitCellIdx =
-            gridMap.MapCoordinateToCellIndex(hitPoints[i]);
-
+        const Point2D<int> hitIdx = gridMap.PositionToIndex(
+            hitPoints[i].mX, hitPoints[i].mY);
         /* Compute the indices of the missed cells */
-        this->ComputeMissedCellIndices(
-            sensorCellIdx, hitCellIdx, missedCellIndices);
+        this->ComputeMissedCellIndices(sensorIdx, hitIdx, missedIndices);
 
         /* Update the cell value */
-        const std::size_t numOfMissedCells = missedCellIndices.size();
+        const std::size_t numOfMissedCells = missedIndices.size();
 
         for (std::size_t j = 0; j < numOfMissedCells; ++j)
-            gridMap.Update(missedCellIndices[j], this->mProbMiss);
+            gridMap.Update(missedIndices[j].mY,
+                           missedIndices[j].mX,
+                           this->mProbMiss);
 
-        gridMap.Update(hitCellIdx, this->mProbHit);
+        gridMap.Update(hitIdx.mY, hitIdx.mX, this->mProbHit);
     }
 }
 
 /* Update the particle map with the multiple latest scans */
 void MapBuilder::UpdateLatestMap(
-    GridMapType& latestMap,
+    GridMap& latestMap,
     const RobotPoseDeque& latestPoses,
     const ScanDataDeque& latestScanData)
 {
     /* Vector for storing missed grid cell indices
      * Specified as static variable to reduce the performance loss
      * caused by memory allocations and deallocations */
-    static std::vector<Point2D<int>> missedCellIndices;
+    static std::vector<Point2D<int>> missedIndices;
 
     XAssert(!latestScanData.empty(),
             "Latest scan data should not be empty");
@@ -196,8 +198,9 @@ void MapBuilder::UpdateLatestMap(
     }
 
     /* Create a new grid map that contains all the scan points */
-    latestMap.Expand(minPos.mX, maxPos.mX, minPos.mY, maxPos.mY);
-    latestMap.Reset();
+    const BoundingBox<double> expandedBox { minPos, maxPos };
+    latestMap.Expand(expandedBox);
+    latestMap.ResetValues();
 
     /* Integrate the scan points into the grid map */
     for (std::size_t i = 0; i < latestScanData.size(); ++i) {
@@ -209,29 +212,29 @@ void MapBuilder::UpdateLatestMap(
         const RobotPose2D<double> sensorPose =
             Compound(particlePose, scanData->RelativeSensorPose());
         /* Compute the grid cell index corresponding to the sensor pose */
-        const Point2D<int> sensorCellIdx =
-            latestMap.MapCoordinateToCellIndex(sensorPose.mX, sensorPose.mY);
+        const Point2D<int> sensorIdx = latestMap.PositionToIndex(
+            sensorPose.mX, sensorPose.mY);
 
         /* Integrate the scan points into the grid map */
         const std::size_t numOfHitPoints = hitPoints[i].size();
 
         for (std::size_t j = 0; j < numOfHitPoints; ++j) {
             /* Compute the grid cell index corresponding to the hit point */
-            const Point2D<int> hitCellIdx =
-                latestMap.MapCoordinateToCellIndex(hitPoints[i][j]);
-
+            const Point2D<int> hitIdx = latestMap.PositionToIndex(
+                hitPoints[i][j].mX, hitPoints[i][j].mY);
             /* Compute the indices of the missed grid cells */
-            this->ComputeMissedCellIndices(
-                sensorCellIdx, hitCellIdx, missedCellIndices);
+            this->ComputeMissedCellIndices(sensorIdx, hitIdx, missedIndices);
 
             /* Update the missed grid cells */
-            const std::size_t numOfMissedCells = missedCellIndices.size();
+            const std::size_t numOfMissedCells = missedIndices.size();
 
             for (std::size_t k = 0; k < numOfMissedCells; ++k)
-                latestMap.Update(missedCellIndices[k], this->mProbMiss);
+                latestMap.Update(missedIndices[k].mY,
+                                 missedIndices[k].mX,
+                                 this->mProbMiss);
 
             /* Update the hit grid cell */
-            latestMap.Update(hitCellIdx, this->mProbHit);
+            latestMap.Update(hitIdx.mY, hitIdx.mX, this->mProbHit);
         }
     }
 }
