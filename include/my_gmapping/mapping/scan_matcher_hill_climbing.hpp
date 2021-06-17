@@ -41,34 +41,26 @@ public:
     using LikelihoodFuncPtr = std::unique_ptr<LikelihoodFunction>;
 
     /* Constructor */
-    ScanMatcherHillClimbing(
-        const std::string& scanMatcherName,
-        LikelihoodFuncPtr&& likelihoodFunc,
-        const double linearDelta,
-        const double angularDelta,
-        const int maxIterations,
-        const int numOfRefinements);
+    ScanMatcherHillClimbing(const std::string& scanMatcherName,
+                            LikelihoodFuncPtr&& likelihoodFunc,
+                            const double linearDelta,
+                            const double angularDelta,
+                            const int maxIterations,
+                            const int numOfRefinements);
 
     /* Destructor */
     ~ScanMatcherHillClimbing() = default;
 
-    /* Optimize particle pose by scan matching methods */
-    void OptimizePose(
-        const std::size_t numOfParticles,
-        const std::vector<const GridMap*>& particleMaps,
-        const Sensor::ScanDataPtr<double>& scanData,
-        const std::vector<RobotPose2D<double>>& initialPoses,
-        std::vector<RobotPose2D<double>>& estimatedPoses,
-        std::vector<double>& likelihoodValues) override;
+    /* Optimize particle poses by scan matching */
+    ScanMatchingResultVector OptimizePose(
+        const ScanMatchingQueryVector& queries,
+        const Sensor::ScanDataPtr<double>& scanData) override;
 
 private:
     /* Optimize particle pose by scan matching methods */
-    void OptimizePoseCore(
-        const GridMapInterface& gridMap,
-        const Sensor::ScanDataPtr<double>& scanData,
-        const RobotPose2D<double>& initialPose,
-        RobotPose2D<double>& estimatedPose,
-        double& likelihoodValue);
+    ScanMatchingResult OptimizePoseCore(
+        const ScanMatchingQuery& query,
+        const Sensor::ScanDataPtr<double>& scanData);
 
 private:
     /* Likelihood function to compute the observation likelihood */

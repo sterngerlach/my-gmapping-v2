@@ -58,15 +58,15 @@ ScanMatcherHillClimbing::ScanMatcherHillClimbing(
 }
 
 /* Optimize pose by scan matching methods */
-void ScanMatcherHillClimbing::OptimizePoseCore(
-    const GridMapInterface& gridMap,
-    const Sensor::ScanDataPtr<double>& scanData,
-    const RobotPose2D<double>& initialPose,
-    RobotPose2D<double>& estimatedPose,
-    double& likelihoodValue)
+ScanMatchingResult ScanMatcherHillClimbing::OptimizePoseCore(
+    const ScanMatchingQuery& query,
+    const Sensor::ScanDataPtr<double>& scanData)
 {
     /* Create the timer */
     Metric::Timer timer;
+
+    const auto& gridMap = query.mGridMap;
+    const auto& initialPose = query.mInitialPose;
 
     /* Constants used for gradient descent method */
     static const double moveX[] = { 1.0, -1.0, 0.0, 0.0, 0.0, 0.0 };
@@ -128,12 +128,15 @@ void ScanMatcherHillClimbing::OptimizePoseCore(
     } while ((poseUpdated || numOfRefinements < this->mNumOfRefinements) &&
              (++numOfIterations < this->mMaxIterations));
 
-    /* Calculate the robot pose from the updated sensor pose */
-    const RobotPose2D<double> robotPose = MoveBackward(bestPose, relPose);
+    /* Compute the robot pose from the sensor pose */
+    const RobotPose2D<double> estimatedPose = MoveBackward(bestPose, relPose);
 
-    /* Set the optimization result */
-    estimatedPose = robotPose;
-    likelihoodValue = bestLikelihood;
+    /* Set the resulting likelihood */
+    const double likelihood = bestLikelihood;
+    const double normalizedLikelihood = likelihood / scanData->NumOfScans();
+    /* Set the resulting score (same as the likelihood) */
+    const double score = likelihood;
+    const double normalizedScore = normalizedLikelihood;
 
     /* Update the metrics */
     this->mMetrics.mOptimizationTime->Observe(timer.ElapsedMicro());
@@ -144,50 +147,36 @@ void ScanMatcherHillClimbing::OptimizePoseCore(
     this->mMetrics.mNumOfIterations->Observe(numOfIterations);
     this->mMetrics.mNumOfRefinements->Observe(numOfRefinements);
 
-    return;
+    return ScanMatchingResult { initialPose, estimatedPose,
+                                normalizedLikelihood, likelihood,
+                                normalizedScore, score };
 }
 
 /* Optimize poses for multiple particles by scan matching methods */
-void ScanMatcherHillClimbing::OptimizePose(
-    std::size_t numOfParticles,
-    const std::vector<const GridMap*>& particleMaps,
-    const Sensor::ScanDataPtr<double>& scanData,
-    const std::vector<RobotPose2D<double>>& initialPoses,
-    std::vector<RobotPose2D<double>>& estimatedPoses,
-    std::vector<double>& likelihoodValues)
+ScanMatchingResultVector ScanMatcherHillClimbing::OptimizePose(
+    const ScanMatchingQueryVector& queries,
+    const Sensor::ScanDataPtr<double>& scanData)
 {
-    /* Input checks */
-    assert(particleMaps.size() == numOfParticles);
-    assert(initialPoses.size() == numOfParticles);
-
-    estimatedPoses.clear();
-    estimatedPoses.resize(numOfParticles);
-    likelihoodValues.clear();
-    likelihoodValues.resize(numOfParticles);
+    ScanMatchingResultVector results;
+    results.resize(queries.size());
 
     /* Optimize the pose for each particle (parallelized using OpenMP) */
 #pragma omp parallel for
-    for (std::size_t i = 0; i < numOfParticles; ++i) {
-        RobotPose2D<double> estimatedPose;
-        double logLikelihood;
-
-        this->OptimizePoseCore(*particleMaps[i], scanData, initialPoses[i],
-                               estimatedPose, logLikelihood);
-
-        /* Set the refined particle pose and the log observation likelihood */
-        estimatedPoses[i] = estimatedPose;
-        likelihoodValues[i] = logLikelihood;
-    }
+    for (std::size_t i = 0; i < queries.size(); ++i)
+        results[i] = this->OptimizePoseCore(queries[i], scanData);
 
     /* Determine the maximum likelihood value and its corresponding score */
     const auto bestIt = std::max_element(
-        likelihoodValues.begin(), likelihoodValues.end());
-    const auto bestIdx = std::distance(likelihoodValues.begin(), bestIt);
+        results.begin(), results.end(),
+        [](const ScanMatchingResult& lhs, const ScanMatchingResult& rhs) {
+            return lhs.mLikelihood < rhs.mLikelihood; });
 
     /* Update the normalized likelihood value of the best particle */
-    this->mMetrics.mLikelihoodValue->Observe(likelihoodValues[bestIdx]);
+    this->mMetrics.mLikelihoodValue->Observe(bestIt->mNormalizedLikelihood);
     /* Update the number of the scan points */
     this->mMetrics.mNumOfScans->Observe(scanData->NumOfScans());
+
+    return results;
 }
 
 } /* namespace Mapping */
