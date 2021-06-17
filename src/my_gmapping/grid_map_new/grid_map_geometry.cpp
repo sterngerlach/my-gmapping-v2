@@ -92,6 +92,13 @@ void GridMapGeometry::Resize(const int rowMin, const int colMin,
     this->mPosOffset.mY += this->mResolution * rowMin;
 }
 
+/* Set the positional offset */
+void GridMapGeometry::SetPosOffset(const double offsetX, const double offsetY)
+{
+    this->mPosOffset.mX = offsetX;
+    this->mPosOffset.mY = offsetY;
+}
+
 /* Check if the grid map is empty */
 bool GridMapGeometry::IsEmpty() const
 {

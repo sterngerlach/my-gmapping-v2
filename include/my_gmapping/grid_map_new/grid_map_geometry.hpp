@@ -48,6 +48,8 @@ struct GridMapGeometry final
     /* Resize the grid map */
     void Resize(const int rowMin, const int colMin,
                 const int rows, const int cols);
+    /* Set the positional offset */
+    void SetPosOffset(const double offsetX, const double offsetY);
 
     /* Check if the grid map is empty */
     bool IsEmpty() const;
