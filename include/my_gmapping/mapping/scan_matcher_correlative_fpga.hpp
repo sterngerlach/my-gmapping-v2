@@ -199,7 +199,7 @@ public:
     /* Optimize the particle poses based on the correlative scan matching */
     void OptimizePose(
         const std::size_t numOfParticles,
-        const std::vector<const GridMapType*>& particleMaps,
+        const std::vector<const GridMap*>& particleMaps,
         const Sensor::ScanDataPtr<double>& scanData,
         const std::vector<RobotPose2D<double>>& initialPoses,
         std::vector<RobotPose2D<double>>& estimatedPoses,
@@ -211,7 +211,7 @@ private:
         const int coreId,
         const std::size_t particleIdxBegin,
         const std::size_t particleIdxEnd,
-        const std::vector<const GridMapType*>& particleMaps,
+        const std::vector<const GridMap*>& particleMaps,
         const Sensor::ScanDataPtr<double>& scanData,
         const std::vector<RobotPose2D<double>>& initialPoses,
         std::vector<RobotPose2D<double>>& estimatedPoses,
@@ -252,9 +252,8 @@ private:
                       const Sensor::ScanDataPtr<double>& scanData);
     /* Send the grid map through AXI DMA */
     void SendGridMap(const int coreId,
-                     const GridMapType& gridMap,
-                     const Point2D<int>& gridMapMinIdx,
-                     const Point2D<int>& gridMapSize);
+                     const GridMap& gridMap,
+                     const BoundingBox<int>& desiredBox);
     /* Receive the result through AXI DMA */
     void ReceiveResult(const int coreId,
                        int& scoreMax, int& bestX, int& bestY, int& bestTheta);
