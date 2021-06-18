@@ -44,7 +44,7 @@ public:
     { return this->mParent; }
 
     /* Get the pose with time stamp */
-    inline const TimeStampedPose StampedPose() const
+    inline const TimeStampedPose& StampedPose() const
     { return this->mStampedPose; }
 
     /* Get the pose of the trajectory node */
