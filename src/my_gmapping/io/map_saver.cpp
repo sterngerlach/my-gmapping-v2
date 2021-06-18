@@ -126,14 +126,16 @@ void MapSaver::DrawTrajectory(const boost::gil::rgb8_view_t& mapImageView,
     if (trajectory.size() < 2)
         return;
 
-    Point2D<int> prevIdx = gridMap.PositionToIndex(
+    const auto scaledGeometry =
+        gridMap.Geometry().ScaledGeometry(SubpixelScale);
+    Point2D<int> prevIdx = scaledGeometry.PositionToIndex(
         trajectory.front().mPose.mX, trajectory.front().mPose.mY);
 
     for (const auto& stampedPose : trajectory) {
-        const Point2D<int> currentIdx = gridMap.PositionToIndex(
+        const Point2D<int> scaledIdx = scaledGeometry.PositionToIndex(
             stampedPose.mPose.mX, stampedPose.mPose.mY);
         std::vector<Point2D<int>> lineIndices;
-        Bresenham(prevIdx, currentIdx, lineIndices);
+        BresenhamScaled(prevIdx, scaledIdx, SubpixelScale, lineIndices);
 
         for (const auto& interpolatedIdx : lineIndices) {
             if (interpolatedIdx.mX < boundingBox.mMin.mX ||
@@ -148,7 +150,7 @@ void MapSaver::DrawTrajectory(const boost::gil::rgb8_view_t& mapImageView,
                              gil::rgb8_pixel_t(255, 0, 0));
         }
 
-        prevIdx = currentIdx;
+        prevIdx = scaledIdx;
     }
 }
 

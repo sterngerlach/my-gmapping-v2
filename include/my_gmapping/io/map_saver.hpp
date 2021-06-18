@@ -81,6 +81,10 @@ private:
     void SaveMapMetadata(const Mapping::GridMap& gridMap,
                          const BoundingBox<int>& boundingBox,
                          const std::string& fileName) const;
+
+private:
+    /* Subpixel scale for drawing the trajectories */
+    static constexpr int SubpixelScale = 100;
 };
 
 } /* namespace IO */
