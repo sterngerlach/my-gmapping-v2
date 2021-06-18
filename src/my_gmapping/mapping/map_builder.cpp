@@ -100,7 +100,9 @@ void MapBuilder::UpdateGridMap(
 
     /* Calculate the cell index corresponding to the sensor pose
      * since the map is updated and index might be changed */
-    const Point2D<int> sensorIdx = gridMap.PositionToIndex(
+    const auto scaledGeometry =
+        gridMap.Geometry().ScaledGeometry(SubpixelScale);
+    const Point2D<int> scaledSensorIdx = scaledGeometry.PositionToIndex(
         sensorPose.mX, sensorPose.mY);
 
     /* Integrate the scan into the particle map */
@@ -110,8 +112,12 @@ void MapBuilder::UpdateGridMap(
         /* Compute the index of the hit cell */
         const Point2D<int> hitIdx = gridMap.PositionToIndex(
             hitPoints[i].mX, hitPoints[i].mY);
+        const Point2D<int> scaledHitIdx = scaledGeometry.PositionToIndex(
+            hitPoints[i].mX, hitPoints[i].mY);
+
         /* Compute the indices of the missed cells */
-        this->ComputeMissedCellIndices(sensorIdx, hitIdx, missedIndices);
+        this->ComputeMissedIndicesScaled(scaledSensorIdx, scaledHitIdx,
+                                         SubpixelScale, missedIndices);
 
         /* Update the cell value */
         const std::size_t numOfMissedCells = missedIndices.size();
@@ -212,7 +218,9 @@ void MapBuilder::UpdateLatestMap(
         const RobotPose2D<double> sensorPose =
             Compound(particlePose, scanData->RelativeSensorPose());
         /* Compute the grid cell index corresponding to the sensor pose */
-        const Point2D<int> sensorIdx = latestMap.PositionToIndex(
+        const auto scaledGeometry =
+            latestMap.Geometry().ScaledGeometry(SubpixelScale);
+        const Point2D<int> scaledSensorIdx = scaledGeometry.PositionToIndex(
             sensorPose.mX, sensorPose.mY);
 
         /* Integrate the scan points into the grid map */
@@ -222,8 +230,12 @@ void MapBuilder::UpdateLatestMap(
             /* Compute the grid cell index corresponding to the hit point */
             const Point2D<int> hitIdx = latestMap.PositionToIndex(
                 hitPoints[i][j].mX, hitPoints[i][j].mY);
+            const Point2D<int> scaledHitIdx = scaledGeometry.PositionToIndex(
+                hitPoints[i][j].mX, hitPoints[i][j].mY);
+
             /* Compute the indices of the missed grid cells */
-            this->ComputeMissedCellIndices(sensorIdx, hitIdx, missedIndices);
+            this->ComputeMissedIndicesScaled(scaledSensorIdx, scaledHitIdx,
+                                             SubpixelScale, missedIndices);
 
             /* Update the missed grid cells */
             const std::size_t numOfMissedCells = missedIndices.size();
@@ -251,6 +263,30 @@ void MapBuilder::ComputeMissedCellIndices(
     Bresenham(startCellIdx, endCellIdx, gridCellIndices);
     /* Remove the last item since it corresponds to the hit cell index */
     gridCellIndices.pop_back();
+}
+
+/* Compute the indices of the missed cells using the Bresenham algorithm
+     * at the subpixel accuracy */
+void MapBuilder::ComputeMissedIndicesScaled(
+    const Point2D<int>& scaledStartIdx,
+    const Point2D<int>& scaledEndIdx,
+    const int subpixelScale,
+    std::vector<Point2D<int>>& missedIndices) const
+{
+    /* Clear the grid cell indices */
+    missedIndices.clear();
+    /* Use the Bresenham algorithm at the subpixel accuracy to compute the
+     * indices of the missed grid cells (i.e., raycasting) */
+    BresenhamScaled(scaledStartIdx, scaledEndIdx,
+                    subpixelScale, missedIndices);
+
+    /* Remove the end index since it corresponds to the hit grid cell */
+    const Point2D<int> endIdx { scaledEndIdx.mX / subpixelScale,
+                                scaledEndIdx.mY / subpixelScale };
+    const auto endIt = std::find(missedIndices.begin(),
+                                 missedIndices.end(), endIdx);
+    Assert(endIt != missedIndices.end());
+    missedIndices.erase(endIt);
 }
 
 } /* namespace Mapping */
