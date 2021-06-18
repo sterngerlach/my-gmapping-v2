@@ -35,41 +35,47 @@ struct GridMapBuilderMetrics
     ~GridMapBuilderMetrics() = default;
 
     /* Total number of the input scan data */
-    Metric::CounterBase*              mInputScanDataCount;
+    Metric::CounterBase*                      mInputScanDataCount;
     /* Total number of the processed scan data */
-    Metric::CounterBase*              mProcessCount;
+    Metric::CounterBase*                      mProcessCount;
     /* Total processing time of the SLAM frontend */
-    Metric::CounterBase*              mProcessTime;
+    Metric::CounterBase*                      mProcessTime;
     /* Total processing time for the scan data */
-    Metric::DistributionBase*         mProcessScanTime;
+    Metric::DistributionBase*                 mProcessScanTime;
     /* Total processing time for the particle sampling */
-    Metric::DistributionBase*         mSamplingTime;
+    Metric::DistributionBase*                 mSamplingTime;
     /* Total processing time for setting up the scan data */
-    Metric::DistributionBase*         mScanDataSetupTime;
+    Metric::DistributionBase*                 mScanDataSetupTime;
     /* Total processing time for the scan matching */
-    Metric::DistributionBase*         mScanMatchingTime;
+    Metric::DistributionBase*                 mScanMatchingTime;
     /* Total processing time for the final scan matching */
-    Metric::DistributionBase*         mFinalScanMatchingTime;
+    Metric::DistributionBase*                 mFinalScanMatchingTime;
     /* Total processing time for updating the particle weights */
-    Metric::DistributionBase*         mWeightUpdateTime;
+    Metric::DistributionBase*                 mWeightUpdateTime;
     /* Total processing time for updating the grid map */
-    Metric::DistributionBase*         mMapUpdateTime;
+    Metric::DistributionBase*                 mMapUpdateTime;
     /* Total processing time for updating the latest grid map */
-    Metric::DistributionBase*         mLatestMapUpdateTime;
+    Metric::DistributionBase*                 mLatestMapUpdateTime;
     /* Total processing time for the particle resampling */
-    Metric::DistributionBase*         mResamplingTime;
+    Metric::DistributionBase*                 mResamplingTime;
     /* Accumulated travel distance between the processed scans */
-    Metric::DistributionBase*         mIntervalTravelDist;
+    Metric::DistributionBase*                 mIntervalTravelDist;
     /* Difference of the robot pose angle between the processed scans */
-    Metric::DistributionBase*         mIntervalAngle;
+    Metric::DistributionBase*                 mIntervalAngle;
     /* Time between the processed scans */
-    Metric::DistributionBase*         mIntervalTime;
+    Metric::DistributionBase*                 mIntervalTime;
     /* Number of the scan points for each scan data */
-    Metric::DistributionBase*         mNumOfScans;
+    Metric::DistributionBase*                 mNumOfScans;
     /* Frame number of the processed scan data */
-    Metric::ValueSequenceBase<int>*   mProcessFrame;
+    Metric::ValueSequenceBase<int>*           mProcessFrame;
     /* Effective sample size */
-    Metric::ValueSequenceBase<float>* mEffectiveSampleSize;
+    Metric::ValueSequenceBase<float>*         mEffectiveSampleSize;
+    /* Total memory consumption for the particle grid maps */
+    Metric::ValueSequenceBase<std::uint64_t>* mGridMapMemoryUsage;
+    /* Total memory consumption for the latest grid maps */
+    Metric::ValueSequenceBase<std::uint64_t>* mLatestMapMemoryUsage;
+    /* Total memory consumption for the trajectory nodes */
+    Metric::ValueSequenceBase<std::uint64_t>* mTrajectoryMemoryUsage;
 };
 
 class GridMapBuilder
@@ -143,16 +149,8 @@ private:
     /* Update the deque that stores the latest scan data */
     void UpdateLatestScans(const Sensor::ScanDataPtr<double>& scanData);
 
-    /* Integrate the scan data to the particle map */
-    /* Update the particle map using the latest scan data */
-    void UpdateGridMap(Particle& particle,
-                       const Sensor::ScanDataPtr<double>& scanData);
     /* Update the grid maps for all particles */
     void UpdateGridMaps(const Sensor::ScanDataPtr<double>& scanData);
-
-    /* Update the particle map with the multiple latest scans */
-    void UpdateLatestMap(Particle& particle,
-                         const ScanDataDeque& latestScanData);
     /* Update the latest maps for all particles */
     void UpdateLatestMaps(const ScanDataDeque& latestScanData);
 
@@ -164,6 +162,13 @@ private:
 
     /* Check the degeneration */
     bool CheckDegeneration(const Eigen::Matrix3d& poseCovarianceMat) const;
+
+    /* Inspect the memory usage for the particle grid maps */
+    std::uint64_t InspectGridMapMemoryUsage() const;
+    /* Inspect the memory usage for the latest grid maps */
+    std::uint64_t InspectLatestMapMemoryUsage() const;
+    /* Inspect the memory usage for the trajectory nodes */
+    std::uint64_t InspectTrajectoryMemoryUsage() const;
 
 private:
     /* Total number of the processed input data */

@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <unordered_set>
 
 #include <Eigen/Core>
 #include <Eigen/Dense>
@@ -35,7 +36,10 @@ GridMapBuilderMetrics::GridMapBuilderMetrics() :
     mIntervalTime(nullptr),
     mNumOfScans(nullptr),
     mProcessFrame(nullptr),
-    mEffectiveSampleSize(nullptr)
+    mEffectiveSampleSize(nullptr),
+    mGridMapMemoryUsage(nullptr),
+    mLatestMapMemoryUsage(nullptr),
+    mTrajectoryMemoryUsage(nullptr)
 {
     /* Retrieve the metrics manager instance */
     auto* const pMetricManager = Metric::MetricManager::Instance();
@@ -81,6 +85,16 @@ GridMapBuilderMetrics::GridMapBuilderMetrics() :
         "GridMapBuilder.ProcessFrame");
     this->mEffectiveSampleSize = pMetricManager->AddValueSequence<float>(
         "GridMapBuilder.EffectiveSampleSize");
+
+    this->mGridMapMemoryUsage =
+        pMetricManager->AddValueSequence<std::uint64_t>(
+            "GridMapBuilder.GridMapMemoryUsage");
+    this->mLatestMapMemoryUsage =
+        pMetricManager->AddValueSequence<std::uint64_t>(
+            "GridMapBuilder.LatestMapMemoryUsage");
+    this->mTrajectoryMemoryUsage =
+        pMetricManager->AddValueSequence<std::uint64_t>(
+            "GridMapBuilder.TrajectoryMemoryUsage");
 }
 
 /* Constructor */
@@ -471,16 +485,10 @@ void GridMapBuilder::ExecuteScanMatching(
     /* Update the total processing time for updating the particle weights */
     this->mMetrics.mWeightUpdateTime->Observe(timer.ElapsedMicro());
     timer.Stop();
-}
 
-/* Integrate the scan data to the particle map */
-void GridMapBuilder::UpdateGridMap(
-    Particle& particle,
-    const Sensor::ScanDataPtr<double>& scanData)
-{
-    /* Just forward to the map builder */
-    this->mMapBuilder.UpdateGridMap(
-        particle.mMap, particle.mPose, scanData);
+    /* Update the memory usage for the trajectory nodes */
+    this->mMetrics.mTrajectoryMemoryUsage->Observe(
+        this->InspectTrajectoryMemoryUsage());
 }
 
 /* Update the grid maps for all particles */
@@ -488,38 +496,38 @@ void GridMapBuilder::UpdateGridMaps(
     const Sensor::ScanDataPtr<double>& scanData)
 {
     /* Update the particle map */
-    for (auto& currentParticle : this->mParticles)
-        this->UpdateGridMap(currentParticle, scanData);
-}
+    for (auto& particle : this->mParticles)
+        this->mMapBuilder.UpdateGridMap(
+            particle.mMap, particle.mPose, scanData);
 
-/* Update the particle map with the multiple latest scans */
-void GridMapBuilder::UpdateLatestMap(
-    Particle& particle,
-    const ScanDataDeque& latestScanData)
-{
-    /* Return if the scan data is unavailable (first iteration) */
-    if (latestScanData.empty())
-        return;
-
-    auto pNode = particle.mNode;
-    std::deque<RobotPose2D<double>> latestPoses;
-
-    for (std::size_t i = 0; i < latestScanData.size(); ++i) {
-        latestPoses.push_front(pNode->Pose());
-        pNode = pNode->Parent();
-    }
-
-    /* Just forward to the map builder */
-    this->mMapBuilder.UpdateLatestMap(
-        particle.mLatestMap, latestPoses, latestScanData);
+    /* Inspect the memory usage for the grid maps */
+    this->mMetrics.mGridMapMemoryUsage->Observe(
+        this->InspectGridMapMemoryUsage());
 }
 
 /* Update the latest maps for all particles */
 void GridMapBuilder::UpdateLatestMaps(
     const ScanDataDeque& latestScanData)
 {
-    for (auto& currentParticle : this->mParticles)
-        this->UpdateLatestMap(currentParticle, latestScanData);
+    if (latestScanData.empty())
+        return;
+
+    for (auto& particle : this->mParticles) {
+        auto pNode = particle.mNode;
+        std::deque<RobotPose2D<double>> latestPoses;
+
+        for (std::size_t i = 0; i < latestScanData.size(); ++i) {
+            latestPoses.push_front(pNode->Pose());
+            pNode = pNode->Parent();
+        }
+
+        this->mMapBuilder.UpdateLatestMap(
+            particle.mLatestMap, latestPoses, latestScanData);
+    }
+
+    /* Inspect the memory usage for the latest grid maps */
+    this->mMetrics.mLatestMapMemoryUsage->Observe(
+        this->InspectLatestMapMemoryUsage());
 }
 
 /* Resample particles according to their weights if necessary */
@@ -601,6 +609,49 @@ bool GridMapBuilder::CheckDegeneration(
     const double eigenRatio = maxEigen / minEigen;
     /* Degeneration is detected if the ratio is considerably large */
     return eigenRatio > this->mDegenerationThreshold;
+}
+
+/* Inspect the memory usage for the particle grid maps */
+std::uint64_t GridMapBuilder::InspectGridMapMemoryUsage() const
+{
+    return std::accumulate(
+        this->mParticles.begin(), this->mParticles.end(), 0,
+        [](const std::uint64_t value, const Particle& particle) {
+            return value + particle.mMap.InspectMemoryUsage(); });
+}
+
+/* Inspect the memory usage for the latest grid maps */
+std::uint64_t GridMapBuilder::InspectLatestMapMemoryUsage() const
+{
+    return std::accumulate(
+        this->mParticles.begin(), this->mParticles.end(), 0,
+        [](const std::uint64_t value, const Particle& particle) {
+            return value + particle.mLatestMap.InspectMemoryUsage(); });
+}
+
+/* Inspect the memory usage for the trajectory nodes */
+std::uint64_t GridMapBuilder::InspectTrajectoryMemoryUsage() const
+{
+    std::uint64_t memoryUsage = 0;
+    std::unordered_set<std::uintptr_t> nodeSet;
+
+    for (std::size_t i = 0; i < this->mParticles.size(); ++i) {
+        auto nodePtr = this->mParticles[i].mNode;
+
+        while (nodePtr != nullptr) {
+            auto nodeId = reinterpret_cast<std::uintptr_t>(nodePtr.get());
+
+            if (nodeSet.find(nodeId) != nodeSet.end())
+                break;
+
+            memoryUsage += sizeof(nodePtr->StampedPose()) +
+                           sizeof(nodePtr->Parent());
+            nodeSet.insert(nodeId);
+            nodePtr = nodePtr->Parent();
+        }
+    }
+
+    return memoryUsage;
 }
 
 /*
