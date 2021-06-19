@@ -20,23 +20,69 @@ ScanMatcherHillClimbingMetrics::ScanMatcherHillClimbingMetrics(
     /* Retrieve the metrics manager instance */
     auto* const pMetricManager = Metric::MetricManager::Instance();
 
-    /* Register the distribution metrics */
-    this->mOptimizationTime = pMetricManager->AddDistribution(
+    /* Register the value sequence metrics */
+    this->mOptimizationTime = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".OptimizationTime");
-    this->mDiffTranslation = pMetricManager->AddDistribution(
+
+    this->mDiffTranslation = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".DiffTranslation");
-    this->mDiffRotation = pMetricManager->AddDistribution(
+    this->mDiffRotation = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".DiffRotation");
-    this->mNumOfIterations = pMetricManager->AddDistribution(
+    this->mNumOfIterations = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".NumOfIterations");
-    this->mNumOfRefinements = pMetricManager->AddDistribution(
+    this->mNumOfRefinements = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".NumOfRefinements");
 
-    /* Register the value sequence metrics */
     this->mLikelihoodValue = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".CostValue");
     this->mNumOfScans = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".NumOfScans");
+}
+
+/* Reserve the buffer to store the processing times */
+void ScanMatcherHillClimbingMetrics::Resize(
+    const std::size_t numOfParticles)
+{
+    this->mTimes.resize(numOfParticles);
+    this->mParams.resize(numOfParticles);
+}
+
+/* Set the processing times for each particle */
+void ScanMatcherHillClimbingMetrics::SetTimes(
+    const std::size_t idx, const Times& times)
+{
+    this->mTimes[idx] = times;
+}
+
+/* Set the parameter settings for each particle */
+void ScanMatcherHillClimbingMetrics::SetParameters(
+    const std::size_t idx, const Parameters& parameters)
+{
+    this->mParams[idx] = parameters;
+}
+
+/* Collect the particle-wise metrics and update the overall metrics */
+void ScanMatcherHillClimbingMetrics::Update(
+    const std::size_t bestIdx)
+{
+    auto collectTimes = [&](
+        std::function<int(int, const Times&)> selector) {
+        return std::accumulate(this->mTimes.begin(),
+                               this->mTimes.end(), 0, selector); };
+
+    /* Compute the sum of the processing times */
+    this->mOptimizationTime->Observe(collectTimes(
+        [](int value, const Times& times) {
+            return value + times.mOptimizationTime; }));
+
+    /* Store the metric values of the best particle */
+    const auto& bestParticle = this->mParams[bestIdx];
+    this->mDiffTranslation->Observe(bestParticle.mDiffTranslation);
+    this->mDiffRotation->Observe(bestParticle.mDiffRotation);
+    this->mNumOfIterations->Observe(bestParticle.mNumOfIterations);
+    this->mNumOfRefinements->Observe(bestParticle.mNumOfRefinements);
+    this->mLikelihoodValue->Observe(bestParticle.mLikelihoodValue);
+    this->mNumOfScans->Observe(bestParticle.mNumOfScans);
 }
 
 /* Constructor */
@@ -59,11 +105,15 @@ ScanMatcherHillClimbing::ScanMatcherHillClimbing(
 
 /* Optimize pose by scan matching methods */
 ScanMatchingResult ScanMatcherHillClimbing::OptimizePoseCore(
+    const std::size_t particleIdx,
     const ScanMatchingQuery& query,
     const Sensor::ScanDataPtr<double>& scanData)
 {
     /* Create the timer */
     Metric::Timer timer;
+    /* Metric values for each particle */
+    ScanMatcherMetrics::Times times;
+    ScanMatcherMetrics::Parameters params;
 
     const auto& gridMap = query.mGridMap;
     const auto& initialPose = query.mInitialPose;
@@ -130,6 +180,8 @@ ScanMatchingResult ScanMatcherHillClimbing::OptimizePoseCore(
 
     /* Compute the robot pose from the sensor pose */
     const RobotPose2D<double> estimatedPose = MoveBackward(bestPose, relPose);
+    const RobotPose2D<double> diffPose =
+        InverseCompound(initialPose, estimatedPose);
 
     /* Set the resulting likelihood */
     const double likelihood = bestLikelihood;
@@ -139,13 +191,19 @@ ScanMatchingResult ScanMatcherHillClimbing::OptimizePoseCore(
     const double normalizedScore = normalizedLikelihood;
 
     /* Update the metrics */
-    this->mMetrics.mOptimizationTime->Observe(timer.ElapsedMicro());
-    this->mMetrics.mDiffTranslation->Observe(
-        Distance(initialPose, estimatedPose));
-    this->mMetrics.mDiffRotation->Observe(
-        std::abs(initialPose.mTheta - estimatedPose.mTheta));
-    this->mMetrics.mNumOfIterations->Observe(numOfIterations);
-    this->mMetrics.mNumOfRefinements->Observe(numOfRefinements);
+    times.mOptimizationTime = timer.ElapsedMicro();
+    timer.Stop();
+
+    params.mDiffTranslation = Distance(diffPose);
+    params.mDiffRotation = std::abs(diffPose.mTheta);
+    params.mNumOfIterations = numOfIterations;
+    params.mNumOfRefinements = numOfRefinements;
+    params.mLikelihoodValue = normalizedLikelihood;
+    params.mNumOfScans = scanData->NumOfScans();
+
+    /* Set the metrics */
+    this->mMetrics.SetTimes(particleIdx, times);
+    this->mMetrics.SetParameters(particleIdx, params);
 
     return ScanMatchingResult { initialPose, estimatedPose,
                                 normalizedLikelihood, likelihood,
@@ -160,21 +218,23 @@ ScanMatchingResultVector ScanMatcherHillClimbing::OptimizePose(
     ScanMatchingResultVector results;
     results.resize(queries.size());
 
+    /* Resize the buffer to store the metrics for each particle */
+    this->mMetrics.Resize(queries.size());
+
     /* Optimize the pose for each particle (parallelized using OpenMP) */
 #pragma omp parallel for
     for (std::size_t i = 0; i < queries.size(); ++i)
-        results[i] = this->OptimizePoseCore(queries[i], scanData);
+        results[i] = this->OptimizePoseCore(i, queries[i], scanData);
 
     /* Determine the maximum likelihood value and its corresponding score */
     const auto bestIt = std::max_element(
         results.begin(), results.end(),
         [](const ScanMatchingResult& lhs, const ScanMatchingResult& rhs) {
             return lhs.mLikelihood < rhs.mLikelihood; });
+    const auto bestIdx = std::distance(results.begin(), bestIt);
 
-    /* Update the normalized likelihood value of the best particle */
-    this->mMetrics.mLikelihoodValue->Observe(bestIt->mNormalizedLikelihood);
-    /* Update the number of the scan points */
-    this->mMetrics.mNumOfScans->Observe(scanData->NumOfScans());
+    /* Update the metrics */
+    this->mMetrics.Update(bestIdx);
 
     return results;
 }
