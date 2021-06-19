@@ -3,6 +3,7 @@
 
 #include "my_gmapping/mapping/scan_matcher_correlative_fpga.hpp"
 
+#include <functional>
 #include <future>
 
 namespace MyGMapping {
@@ -35,73 +36,160 @@ ScanMatcherCorrelativeFPGAMetrics::ScanMatcherCorrelativeFPGAMetrics(
     mStepSizeX(nullptr),
     mStepSizeY(nullptr),
     mStepSizeTheta(nullptr),
-    mMapSizeX(nullptr),
-    mMapSizeY(nullptr),
+    mMapTransfers(nullptr),
+    mMapTransferSkips(nullptr),
     mMapChunks(nullptr),
-    mScanTransferSkip(nullptr),
-    mMapTransferSkip(nullptr),
+    mScanTransfers(nullptr),
+    mScanTransferSkips(nullptr),
+    mNumOfTransferredScans(nullptr),
     mScoreValue(nullptr),
-    mLikelihoodValue(nullptr),
-    mNumOfTransferredScans(nullptr)
+    mLikelihoodValue(nullptr)
 {
     /* Retrieve the metrics manager instance */
     auto* const pMetricManager = Metric::MetricManager::Instance();
 
-    /* Register the counter metrics */
-    this->mMapChunks = pMetricManager->AddCounter(
-        scanMatcherName + ".MapChunks");
-    this->mScanTransferSkip = pMetricManager->AddCounter(
-        scanMatcherName + ".ScanTransferSkip");
-    this->mMapTransferSkip = pMetricManager->AddCounter(
-        scanMatcherName + ".MapTransferSkip");
-
-    /* Register the distribution metrics */
-    this->mInputSetupTime = pMetricManager->AddDistribution(
+    /* Register the value sequence metrics */
+    this->mInputSetupTime = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".InputSetupTime");
-    this->mSetupIPTime = pMetricManager->AddDistribution(
+    this->mSetupIPTime = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".SetupIPTime");
-    this->mScanSendTime = pMetricManager->AddDistribution(
+    this->mScanSendTime = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".ScanSendTime");
-    this->mMapSendTime = pMetricManager->AddDistribution(
+    this->mMapSendTime = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".MapSendTime");
-    this->mOptimizationTime = pMetricManager->AddDistribution(
+    this->mOptimizationTime = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".OptimizationTime");
-    this->mWaitIPTime = pMetricManager->AddDistribution(
+    this->mWaitIPTime = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".WaitIPTime");
-    this->mScanMatchingTime = pMetricManager->AddDistribution(
+    this->mScanMatchingTime = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".ScanMatchingTime");
-    this->mDiffTranslation = pMetricManager->AddDistribution(
+
+    this->mDiffTranslation = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".DiffTranslation");
-    this->mDiffRotation = pMetricManager->AddDistribution(
+    this->mDiffRotation = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".DiffRotation");
-    this->mWinSizeX = pMetricManager->AddDistribution(
+    this->mWinSizeX = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".WinSizeX");
-    this->mWinSizeY = pMetricManager->AddDistribution(
+    this->mWinSizeY = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".WinSizeY");
-    this->mWinSizeTheta = pMetricManager->AddDistribution(
+    this->mWinSizeTheta = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".WinSizeTheta");
-    this->mStepSizeX = pMetricManager->AddDistribution(
+    this->mStepSizeX = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".StepSizeX");
-    this->mStepSizeY = pMetricManager->AddDistribution(
+    this->mStepSizeY = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".StepSizeY");
-    this->mStepSizeTheta = pMetricManager->AddDistribution(
+    this->mStepSizeTheta = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".StepSizeTheta");
 
-    /* Register the histogram metrics */
-    const Metric::BucketBoundaries mapSizeBuckets =
-        Metric::Histogram::CreateFixedWidthBoundaries(0.0, 400.0, 20.0);
-    this->mMapSizeX = pMetricManager->AddHistogram(
-        scanMatcherName + ".MapSizeX", mapSizeBuckets);
-    this->mMapSizeY = pMetricManager->AddHistogram(
-        scanMatcherName + ".MapSizeY", mapSizeBuckets);
+    this->mMapTransfers = pMetricManager->AddValueSequence<int>(
+        scanMatcherName + ".MapTransfers");
+    this->mMapTransferSkips = pMetricManager->AddValueSequence<int>(
+        scanMatcherName + ".MapTransferSkips");
+    this->mMapChunks = pMetricManager->AddValueSequence<int>(
+        scanMatcherName + ".MapChunks");
+    this->mScanTransfers = pMetricManager->AddValueSequence<int>(
+        scanMatcherName + ".ScanTransfers");
+    this->mScanTransferSkips = pMetricManager->AddValueSequence<int>(
+        scanMatcherName + ".ScanTransferSkips");
+    this->mNumOfTransferredScans = pMetricManager->AddValueSequence<int>(
+        scanMatcherName + ".NumOfTransferredScans");
 
-    /* Register the value sequence metrics */
     this->mScoreValue = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".ScoreValue");
     this->mLikelihoodValue = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".LikelihoodValue");
-    this->mNumOfTransferredScans = pMetricManager->AddValueSequence<int>(
-        scanMatcherName + ".NumOfTransferredScans");
+}
+
+/* Reserve the buffer to store the processing times */
+void ScanMatcherCorrelativeFPGAMetrics::Resize(
+    const std::size_t numOfParticles)
+{
+    this->mTimes.resize(numOfParticles);
+    this->mParams.resize(numOfParticles);
+}
+
+/* Set the processing times for each particle */
+void ScanMatcherCorrelativeFPGAMetrics::SetTimes(
+    const std::size_t idx, const Times& times)
+{
+    this->mTimes[idx] = times;
+}
+
+/* Set the parameter settings for each particle */
+void ScanMatcherCorrelativeFPGAMetrics::SetParameters(
+    const std::size_t idx, const Parameters& parameters)
+{
+    this->mParams[idx] = parameters;
+}
+
+/* Collect the particle-wise metrics and update the overall metrics */
+void ScanMatcherCorrelativeFPGAMetrics::Update(
+    const std::size_t bestIdx)
+{
+    auto collectTimes = [&](
+        std::function<int(int, const Times&)> selector) {
+        return std::accumulate(this->mTimes.begin(),
+                               this->mTimes.end(), 0, selector); };
+    auto collectParams = [&](
+        std::function<int(int, const Parameters&)> selector) {
+            return std::accumulate(this->mParams.begin(),
+                                   this->mParams.end(), 0, selector); };
+
+    /* Compute the sum of the processing times */
+    this->mInputSetupTime->Observe(collectTimes(
+        [](int value, const Times& times) {
+            return value + times.mInputSetupTime; }));
+    this->mSetupIPTime->Observe(collectTimes(
+        [](int value, const Times& times) {
+            return value + times.mSetupIPTime; }));
+    this->mScanSendTime->Observe(collectTimes(
+        [](int value, const Times& times) {
+            return value + times.mScanSendTime; }));
+    this->mMapSendTime->Observe(collectTimes(
+        [](int value, const Times& times) {
+            return value + times.mMapSendTime; }));
+    this->mOptimizationTime->Observe(collectTimes(
+        [](int value, const Times& times) {
+            return value + times.mOptimizationTime; }));
+    this->mWaitIPTime->Observe(collectTimes(
+        [](int value, const Times& times) {
+            return value + times.mWaitIPTime; }));
+    this->mScanMatchingTime->Observe(collectTimes(
+        [](int value, const Times& times) {
+            return value + times.mScanMatchingTime; }));
+
+    /* Store the metric values of the best particle */
+    const auto& bestParticle = this->mParams[bestIdx];
+    this->mDiffTranslation->Observe(bestParticle.mDiffTranslation);
+    this->mDiffRotation->Observe(bestParticle.mDiffRotation);
+    this->mWinSizeX->Observe(bestParticle.mWinSizeX);
+    this->mWinSizeY->Observe(bestParticle.mWinSizeY);
+    this->mWinSizeTheta->Observe(bestParticle.mWinSizeTheta);
+    this->mStepSizeX->Observe(bestParticle.mStepSizeX);
+    this->mStepSizeY->Observe(bestParticle.mStepSizeY);
+    this->mStepSizeTheta->Observe(bestParticle.mStepSizeTheta);
+    this->mScoreValue->Observe(bestParticle.mScoreValue);
+    this->mLikelihoodValue->Observe(bestParticle.mLikelihoodValue);
+
+    /* Store the collected metric values */
+    this->mMapTransfers->Observe(collectParams(
+        [](int value, const Parameters& params) {
+            return params.mMapTransferred ? (value + 1) : value; }));
+    this->mMapTransferSkips->Observe(collectParams(
+        [](int value, const Parameters& params) {
+            return params.mMapTransferred ? value : (value + 1); }));
+    this->mMapChunks->Observe(collectParams(
+        [](int value, const Parameters& params) {
+            return value + params.mMapChunks; }));
+    this->mScanTransfers->Observe(collectParams(
+        [](int value, const Parameters& params) {
+            return params.mScanTransferred ? (value + 1) : value; }));
+    this->mScanTransferSkips->Observe(collectParams(
+        [](int value, const Parameters& params) {
+            return params.mScanTransferred ? value : (value + 1); }));
+    this->mNumOfTransferredScans->Observe(collectParams(
+        [](int value, const Parameters& params) {
+            return value + params.mNumOfTransferredScans; }));
 }
 
 /* Constructor */
@@ -167,6 +255,9 @@ ScanMatchingResultVector ScanMatcherCorrelativeFPGA::OptimizePose(
             "Number of the particles must be multiple of the "
             "number of the scan matcher IP cores implemented on the device");
 
+    /* Resize the buffer to store the metrics for each particle */
+    this->mMetrics.Resize(queries.size());
+
     const std::size_t size = queries.size();
     const std::size_t half = queries.size() / 2;
 
@@ -188,16 +279,10 @@ ScanMatchingResultVector ScanMatcherCorrelativeFPGA::OptimizePose(
         results.begin(), results.end(),
         [](const ScanMatchingResult& lhs, const ScanMatchingResult& rhs) {
             return lhs.mLikelihood < rhs.mLikelihood; });
-
-    /* Determine the number of the scan points to be transferred */
-    const int maxNumOfScans = this->mCommonConfig.mMaxNumOfScans;
-    const int numOfScans = static_cast<int>(scanData->NumOfScans());
-    const int numOfScansTransferred = std::min(maxNumOfScans, numOfScans);
+    const auto bestIdx = std::distance(results.begin(), bestIt);
 
     /* Update the metrics */
-    this->mMetrics.mScoreValue->Observe(bestIt->mNormalizedScore);
-    this->mMetrics.mLikelihoodValue->Observe(bestIt->mNormalizedLikelihood);
-    this->mMetrics.mNumOfTransferredScans->Observe(numOfScansTransferred);
+    this->mMetrics.Update(bestIdx);
 
     return results;
 }
@@ -251,6 +336,9 @@ ScanMatchingResultVector ScanMatcherCorrelativeFPGA::OptimizePoseCore(
         /* Create the timer */
         Metric::Timer outerTimer;
         Metric::Timer timer;
+        /* Metric values for each particle */
+        ScanMatcherMetrics::Times times;
+        ScanMatcherMetrics::Parameters params;
 
         const auto& initialPose = queries[i].mInitialPose;
         const auto& gridMap = queries[i].mGridMap;
@@ -275,7 +363,7 @@ ScanMatchingResultVector ScanMatcherCorrelativeFPGA::OptimizePoseCore(
             gridMap.IndexToPosition(boundingBox.mMin.mY, boundingBox.mMin.mX);
 
         /* Update the metrics and restart the timer */
-        this->mMetrics.mInputSetupTime->Observe(timer.ElapsedMicro());
+        times.mInputSetupTime = timer.ElapsedMicro();
         timer.Start();
 
         /* Set the scan matching parameters through AXI4-Lite slave interface */
@@ -286,22 +374,21 @@ ScanMatchingResultVector ScanMatcherCorrelativeFPGA::OptimizePoseCore(
             winX * 2, winY * 2, winTheta * 2, stepX, stepY, stepTheta);
         /* Start the scan matcher IP core */
         this->StartIPCore(coreId);
-
         /* Update the metrics and restart the timer */
-        this->mMetrics.mSetupIPTime->Observe(timer.ElapsedMicro());
+        times.mSetupIPTime = timer.ElapsedMicro();
         timer.Start();
 
         /* Send the scan data for the first particle only */
         const bool scanDataTransferred = (i == idxBegin);
-        this->SendScanData(coreId, scanDataTransferred, scanData);
+        this->SendScanData(coreId, scanDataTransferred, scanData, params);
         /* Update the metrics and restart the timer */
-        this->mMetrics.mScanSendTime->Observe(timer.ElapsedMicro());
+        times.mScanSendTime = timer.ElapsedMicro();
         timer.Start();
 
         /* Send the grid map */
-        this->SendGridMap(coreId, gridMap, boundingBox);
+        this->SendGridMap(coreId, gridMap, boundingBox, params);
         /* Update the metrics and restart the timer */
-        this->mMetrics.mMapSendTime->Observe(timer.ElapsedMicro());
+        times.mMapSendTime = timer.ElapsedMicro();
         timer.Start();
 
         /* Receive the result */
@@ -311,13 +398,14 @@ ScanMatchingResultVector ScanMatcherCorrelativeFPGA::OptimizePoseCore(
         int bestTheta;
         this->ReceiveResult(coreId, scoreMax, bestX, bestY, bestTheta);
         /* Update the metrics and restart the timer */
-        this->mMetrics.mOptimizationTime->Observe(timer.ElapsedMicro());
+        times.mOptimizationTime = timer.ElapsedMicro();
         timer.Start();
 
         /* Wait for the scan matcher IP core */
         this->WaitIPCore(coreId);
         /* Update the metrics and stop the timer */
-        this->mMetrics.mWaitIPTime->Observe(timer.ElapsedMicro());
+        times.mWaitIPTime = timer.ElapsedMicro();
+        timer.Stop();
 
         /* Compute the best sensor pose */
         const RobotPose2D<double> bestSensorPose {
@@ -327,6 +415,9 @@ ScanMatchingResultVector ScanMatcherCorrelativeFPGA::OptimizePoseCore(
         /* Compute the estimated robot pose and the likelihood value */
         const RobotPose2D<double> estimatedPose =
             MoveBackward(bestSensorPose, scanData->RelativeSensorPose());
+        /* Compute the difference from the initial pose */
+        const RobotPose2D<double> diffPose =
+            InverseCompound(initialPose, estimatedPose);
 
         /* Set the resulting score */
         const double factor = (1 << this->mCommonConfig.mMapBitWidth) - 1;
@@ -339,27 +430,29 @@ ScanMatchingResultVector ScanMatcherCorrelativeFPGA::OptimizePoseCore(
         const double normalizedLikelihood = likelihood / scanData->NumOfScans();
 
         /* Update the metrics */
-        this->mMetrics.mScanMatchingTime->Observe(outerTimer.ElapsedMicro());
-        this->mMetrics.mDiffTranslation->Observe(
-            Distance(initialPose, estimatedPose));
-        this->mMetrics.mDiffRotation->Observe(
-            std::abs(initialPose.mTheta - estimatedPose.mTheta));
-        this->mMetrics.mMapSizeX->Observe(gridMapSize.mX);
-        this->mMetrics.mMapSizeY->Observe(gridMapSize.mY);
+        times.mScanMatchingTime = outerTimer.ElapsedMicro();
+        outerTimer.Stop();
+
+        params.mDiffTranslation = Distance(diffPose);
+        params.mDiffRotation = std::abs(diffPose.mTheta);
+        params.mWinSizeX = winX;
+        params.mWinSizeY = winY;
+        params.mWinSizeTheta = winTheta;
+        params.mStepSizeX = stepX;
+        params.mStepSizeY = stepY;
+        params.mStepSizeTheta = stepTheta;
+        params.mScoreValue = normalizedScore;
+        params.mLikelihoodValue = normalizedLikelihood;
+
+        /* Set the metrics */
+        this->mMetrics.SetTimes(i, times);
+        this->mMetrics.SetParameters(i, params);
 
         /* Append the scan matching result */
         results.emplace_back(initialPose, estimatedPose,
                              normalizedLikelihood, likelihood,
                              normalizedScore, score);
     }
-
-    /* Update the metrics */
-    this->mMetrics.mWinSizeX->Observe(winX);
-    this->mMetrics.mWinSizeY->Observe(winY);
-    this->mMetrics.mWinSizeTheta->Observe(winTheta);
-    this->mMetrics.mStepSizeX->Observe(stepX);
-    this->mMetrics.mStepSizeY->Observe(stepY);
-    this->mMetrics.mStepSizeTheta->Observe(stepTheta);
 
     return results;
 }
@@ -571,7 +664,8 @@ void ScanMatcherCorrelativeFPGA::SetParameterRegisters(
 void ScanMatcherCorrelativeFPGA::SendScanData(
     const int coreId,
     const bool scanDataTransferred,
-    const Sensor::ScanDataPtr<double>& scanData)
+    const Sensor::ScanDataPtr<double>& scanData,
+    ScanMatcherMetrics::Parameters& params)
 {
     /* Retrieve the pointer to the CMA memory */
     volatile std::uint64_t* pInput =
@@ -588,7 +682,8 @@ void ScanMatcherCorrelativeFPGA::SendScanData(
         this->mAxiDma[coreId]->SendChannel().Wait();
 
         /* Update the metrics */
-        this->mMetrics.mScanTransferSkip->Increment();
+        params.mScanTransferred = false;
+        params.mNumOfTransferredScans = 0;
 
         return;
     }
@@ -639,13 +734,18 @@ void ScanMatcherCorrelativeFPGA::SendScanData(
     this->mAxiDma[coreId]->SendChannel().Transfer(
         transferLengthInBytes, this->mInputData[coreId].PhysicalAddress());
     this->mAxiDma[coreId]->SendChannel().Wait();
+
+    /* Update the metrics */
+    params.mScanTransferred = true;
+    params.mNumOfTransferredScans = numOfScansTransferred;
 }
 
 /* Send the grid map through AXI DMA */
 void ScanMatcherCorrelativeFPGA::SendGridMap(
     const int coreId,
     const GridMap& gridMap,
-    const BoundingBox<int>& desiredBox)
+    const BoundingBox<int>& desiredBox,
+    ScanMatcherMetrics::Parameters& params)
 {
     /* Retrieve the pointer to the CMA memory */
     volatile std::uint64_t* pInput =
@@ -674,8 +774,8 @@ void ScanMatcherCorrelativeFPGA::SendGridMap(
     this->mAxiDma[coreId]->SendChannel().Wait();
 
     /* Update the metrics */
-    const int numOfChunks = desiredBox.Height() * chunkCols;
-    this->mMetrics.mMapChunks->Increment(numOfChunks);
+    params.mMapTransferred = true;
+    params.mMapChunks = desiredBox.Height() * chunkCols;
 }
 
 /* Receive the result through AXI DMA */

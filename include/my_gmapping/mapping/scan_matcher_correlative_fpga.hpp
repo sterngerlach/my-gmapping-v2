@@ -18,57 +18,108 @@ namespace Mapping {
 
 struct ScanMatcherCorrelativeFPGAMetrics
 {
+    /* `Times` struct holds the processing times for each particle */
+    struct Times
+    {
+        int mInputSetupTime;
+        int mSetupIPTime;
+        int mScanSendTime;
+        int mMapSendTime;
+        int mOptimizationTime;
+        int mWaitIPTime;
+        int mScanMatchingTime;
+    };
+
+    /* `Parameters` struct holds the parameter settings for each particle */
+    struct Parameters
+    {
+        /* Metric values related to the algorithmic parameters */
+        float mDiffTranslation;
+        float mDiffRotation;
+        int   mWinSizeX;
+        int   mWinSizeY;
+        int   mWinSizeTheta;
+        float mStepSizeX;
+        float mStepSizeY;
+        float mStepSizeTheta;
+        /* Metric values related to the data transfers */
+        bool  mMapTransferred;
+        int   mMapChunks;
+        bool  mScanTransferred;
+        int   mNumOfTransferredScans;
+        /* Metric values related to the outputs */
+        float mScoreValue;
+        float mLikelihoodValue;
+    };
+
     /* Constructor */
     ScanMatcherCorrelativeFPGAMetrics(const std::string& scanMatcherName);
     /* Destructor */
     ~ScanMatcherCorrelativeFPGAMetrics() = default;
 
+    /* Resize the buffer to store the processing times */
+    void Resize(const std::size_t numOfParticles);
+    /* Set the processing times for each particle */
+    void SetTimes(const std::size_t idx, const Times& times);
+    /* Set the parameter settings for each particle */
+    void SetParameters(const std::size_t idx, const Parameters& params);
+    /* Collect the particle-wise metrics and update the overall metrics */
+    void Update(const std::size_t bestIdx);
+
+    /* Processing times for all particles */
+    std::vector<Times>                mTimes;
+    /* Parameter settings for all particles */
+    std::vector<Parameters>           mParams;
+
     /* Total processing time for setting up the input */
-    Metric::DistributionBase*         mInputSetupTime;
+    Metric::ValueSequenceBase<int>*   mInputSetupTime;
     /* Total processing time for setting up the scan matcher IP core */
-    Metric::DistributionBase*         mSetupIPTime;
+    Metric::ValueSequenceBase<int>*   mSetupIPTime;
     /* Total processing time for sending the scan data */
-    Metric::DistributionBase*         mScanSendTime;
+    Metric::ValueSequenceBase<int>*   mScanSendTime;
     /* Total processing time for sending the grid map data */
-    Metric::DistributionBase*         mMapSendTime;
+    Metric::ValueSequenceBase<int>*   mMapSendTime;
     /* Total processing time for the calculation on the FPGA device */
-    Metric::DistributionBase*         mOptimizationTime;
+    Metric::ValueSequenceBase<int>*   mOptimizationTime;
     /* Total processing time for waiting for the scan matcher IP core */
-    Metric::DistributionBase*         mWaitIPTime;
+    Metric::ValueSequenceBase<int>*   mWaitIPTime;
     /* Total processing time for the scan matching */
-    Metric::DistributionBase*         mScanMatchingTime;
+    Metric::ValueSequenceBase<int>*   mScanMatchingTime;
+
     /* Distance between the initial pose and the final pose */
-    Metric::DistributionBase*         mDiffTranslation;
+    Metric::ValueSequenceBase<float>* mDiffTranslation;
     /* Absolute difference between the initial angle and the final angle */
-    Metric::DistributionBase*         mDiffRotation;
+    Metric::ValueSequenceBase<float>* mDiffRotation;
     /* Size of the search window along the X-axis */
-    Metric::DistributionBase*         mWinSizeX;
+    Metric::ValueSequenceBase<int>*   mWinSizeX;
     /* Size of the search window along the Y-axis */
-    Metric::DistributionBase*         mWinSizeY;
+    Metric::ValueSequenceBase<int>*   mWinSizeY;
     /* Size of the search window along the Theta-axis */
-    Metric::DistributionBase*         mWinSizeTheta;
+    Metric::ValueSequenceBase<int>*   mWinSizeTheta;
     /* Step size along the X-axis */
-    Metric::DistributionBase*         mStepSizeX;
+    Metric::ValueSequenceBase<float>* mStepSizeX;
     /* Step size along the Y-axis */
-    Metric::DistributionBase*         mStepSizeY;
+    Metric::ValueSequenceBase<float>* mStepSizeY;
     /* Step size along the Theta-axis */
-    Metric::DistributionBase*         mStepSizeTheta;
-    /* Width of the transferred grid map (in the number of the grid cells) */
-    Metric::HistogramBase*            mMapSizeX;
-    /* Height of the transferred grid map (in the number of the grid cells) */
-    Metric::HistogramBase*            mMapSizeY;
-    /* Number of the transferred grid cell chunks in the grid map */
-    Metric::CounterBase*              mMapChunks;
-    /* Number of the scan data transfer skips */
-    Metric::CounterBase*              mScanTransferSkip;
+    Metric::ValueSequenceBase<float>* mStepSizeTheta;
+
+    /* Number of the grid map transfers */
+    Metric::ValueSequenceBase<int>*   mMapTransfers;
     /* Number of the grid map transfer skips */
-    Metric::CounterBase*              mMapTransferSkip;
+    Metric::ValueSequenceBase<int>*   mMapTransferSkips;
+    /* Number of the transferred grid cell chunks in the grid map */
+    Metric::ValueSequenceBase<int>*   mMapChunks;
+    /* Number of the scan data transfers */
+    Metric::ValueSequenceBase<int>*   mScanTransfers;
+    /* Number of the scan data transfer skips */
+    Metric::ValueSequenceBase<int>*   mScanTransferSkips;
+    /* Number of the transferred scan points */
+    Metric::ValueSequenceBase<int>*   mNumOfTransferredScans;
+
     /* Normalized score value of the best particle */
     Metric::ValueSequenceBase<float>* mScoreValue;
     /* Normalized likelihood value of the best particle */
     Metric::ValueSequenceBase<float>* mLikelihoodValue;
-    /* Number of the transferred scan points */
-    Metric::ValueSequenceBase<int>*   mNumOfTransferredScans;
 };
 
 /*
@@ -169,6 +220,7 @@ public:
     using CMAMemory = Hardware::CMAMemory;
     using IPConfig = ScanMatcherCorrelativeFPGAConfig;
     using IPCommonConfig = ScanMatcherCorrelativeFPGACommonConfig;
+    using ScanMatcherMetrics = ScanMatcherCorrelativeFPGAMetrics;
 
     /* Constructor */
     ScanMatcherCorrelativeFPGA(
@@ -235,11 +287,13 @@ private:
     /* Send the scan data through AXI DMA */
     void SendScanData(const int coreId,
                       const bool scanDataTransferred,
-                      const Sensor::ScanDataPtr<double>& scanData);
+                      const Sensor::ScanDataPtr<double>& scanData,
+                      ScanMatcherMetrics::Parameters& params);
     /* Send the grid map through AXI DMA */
     void SendGridMap(const int coreId,
                      const GridMap& gridMap,
-                     const BoundingBox<int>& desiredBox);
+                     const BoundingBox<int>& desiredBox,
+                     ScanMatcherMetrics::Parameters& params);
     /* Receive the result through AXI DMA */
     void ReceiveResult(const int coreId,
                        int& scoreMax, int& bestX, int& bestY, int& bestTheta);
@@ -275,20 +329,20 @@ private:
     static constexpr const int        NumOfIPCores = 2;
 
     /* Configuration of the scan matcher IP core */
-    const IPConfig                    mConfig[NumOfIPCores];
-    const IPCommonConfig              mCommonConfig;
+    const IPConfig       mConfig[NumOfIPCores];
+    const IPCommonConfig mCommonConfig;
     /* Configuration of the AXI DMA IP core */
-    const AxiDmaConfig                mAxiDmaConfig[NumOfIPCores];
+    const AxiDmaConfig   mAxiDmaConfig[NumOfIPCores];
     /* Interface to the scan matcher IP core control registers */
-    MemoryMappedIOPtr                 mControlRegisters[NumOfIPCores];
+    MemoryMappedIOPtr    mControlRegisters[NumOfIPCores];
     /* Interface to the AXI DMA IP core */
-    AxiSimpleDMAPtr                   mAxiDma[NumOfIPCores];
+    AxiSimpleDMAPtr      mAxiDma[NumOfIPCores];
     /* CMA memory to store the scan matching input */
-    CMAMemory                         mInputData[NumOfIPCores];
+    CMAMemory            mInputData[NumOfIPCores];
     /* CMA memory to store the scan matching result */
-    CMAMemory                         mOutputData[NumOfIPCores];
+    CMAMemory            mOutputData[NumOfIPCores];
     /* Metrics information */
-    ScanMatcherCorrelativeFPGAMetrics mMetrics;
+    ScanMatcherMetrics   mMetrics;
 };
 
 } /* namespace Mapping */
