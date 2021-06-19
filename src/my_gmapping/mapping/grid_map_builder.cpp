@@ -49,38 +49,37 @@ GridMapBuilderMetrics::GridMapBuilderMetrics() :
         "GridMapBuilder.InputScanDataCount");
     this->mProcessCount = pMetricManager->AddCounter(
         "GridMapBuilder.ProcessCount");
-    this->mProcessTime = pMetricManager->AddCounter(
-        "GridMapBuilder.ProcessTime");
-
-    /* Register the distribution metrics */
-    this->mProcessScanTime = pMetricManager->AddDistribution(
-        "GridMapBuilder.ProcessScanTime");
-    this->mSamplingTime = pMetricManager->AddDistribution(
-        "GridMapBuilder.SamplingTime");
-    this->mScanDataSetupTime = pMetricManager->AddDistribution(
-        "GridMapBuilder.ScanDataSetupTime");
-    this->mScanMatchingTime = pMetricManager->AddDistribution(
-        "GridMapBuilder.ScanMatchingTime");
-    this->mFinalScanMatchingTime = pMetricManager->AddDistribution(
-        "GridMapBuilder.FinalScanMatchingTime");
-    this->mWeightUpdateTime = pMetricManager->AddDistribution(
-        "GridMapBuilder.WeightUpdateTime");
-    this->mMapUpdateTime = pMetricManager->AddDistribution(
-        "GridMapBuilder.MapUpdateTime");
-    this->mLatestMapUpdateTime = pMetricManager->AddDistribution(
-        "GridMapBuilder.LatestMapUpdateTime");
-    this->mResamplingTime = pMetricManager->AddDistribution(
-        "GridMapBuilder.ResamplingTime");
-    this->mIntervalTravelDist = pMetricManager->AddDistribution(
-        "GridMapBuilder.IntervalTravelDist");
-    this->mIntervalAngle = pMetricManager->AddDistribution(
-        "GridMapBuilder.IntervalAngle");
-    this->mIntervalTime = pMetricManager->AddDistribution(
-        "GridMapBuilder.IntervalTime");
-    this->mNumOfScans = pMetricManager->AddDistribution(
-        "GridMapBuilder.NumOfScans");
 
     /* Register the value sequence metrics */
+    this->mProcessTime = pMetricManager->AddValueSequence<int>(
+        "GridMapBuilder.ProcessTime");
+    this->mProcessScanTime = pMetricManager->AddValueSequence<int>(
+        "GridMapBuilder.ProcessScanTime");
+    this->mSamplingTime = pMetricManager->AddValueSequence<int>(
+        "GridMapBuilder.SamplingTime");
+    this->mScanDataSetupTime = pMetricManager->AddValueSequence<int>(
+        "GridMapBuilder.ScanDataSetupTime");
+    this->mScanMatchingTime = pMetricManager->AddValueSequence<int>(
+        "GridMapBuilder.ScanMatchingTime");
+    this->mFinalScanMatchingTime = pMetricManager->AddValueSequence<int>(
+        "GridMapBuilder.FinalScanMatchingTime");
+    this->mWeightUpdateTime = pMetricManager->AddValueSequence<int>(
+        "GridMapBuilder.WeightUpdateTime");
+    this->mMapUpdateTime = pMetricManager->AddValueSequence<int>(
+        "GridMapBuilder.MapUpdateTime");
+    this->mLatestMapUpdateTime = pMetricManager->AddValueSequence<int>(
+        "GridMapBuilder.LatestMapUpdateTime");
+    this->mResamplingTime = pMetricManager->AddValueSequence<int>(
+        "GridMapBuilder.ResamplingTime");
+    this->mIntervalTravelDist = pMetricManager->AddValueSequence<float>(
+        "GridMapBuilder.IntervalTravelDist");
+    this->mIntervalAngle = pMetricManager->AddValueSequence<float>(
+        "GridMapBuilder.IntervalAngle");
+    this->mIntervalTime = pMetricManager->AddValueSequence<float>(
+        "GridMapBuilder.IntervalTime");
+    this->mNumOfScans = pMetricManager->AddValueSequence<int>(
+        "GridMapBuilder.NumOfScans");
+
     this->mProcessFrame = pMetricManager->AddValueSequence<int>(
         "GridMapBuilder.ProcessFrame");
     this->mEffectiveSampleSize = pMetricManager->AddValueSequence<float>(
@@ -222,7 +221,7 @@ bool GridMapBuilder::ProcessScan(
 
     if (!mapUpdateNeeded) {
         /* Update the metrics */
-        this->mMetrics.mProcessTime->Increment(outerTimer.ElapsedMicro());
+        this->mMetrics.mProcessTime->Observe(outerTimer.ElapsedMicro());
         return false;
     }
 
@@ -296,7 +295,7 @@ bool GridMapBuilder::ProcessScan(
 
     /* Update the metrics */
     this->mMetrics.mProcessCount->Increment();
-    this->mMetrics.mProcessTime->Increment(outerTimer.ElapsedMicro());
+    this->mMetrics.mProcessTime->Observe(outerTimer.ElapsedMicro());
     this->mMetrics.mProcessScanTime->Observe(outerTimer.ElapsedMicro());
     this->mMetrics.mIntervalTravelDist->Observe(this->mAccumulatedTravelDist);
     this->mMetrics.mIntervalAngle->Observe(this->mAccumulatedAngle);
