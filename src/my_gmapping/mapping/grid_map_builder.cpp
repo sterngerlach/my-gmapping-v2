@@ -11,6 +11,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
 
+#include "my_gmapping/memory_usage.hpp"
 #include "my_gmapping/util.hpp"
 #include "my_gmapping/mapping/grid_map_builder.hpp"
 
@@ -37,6 +38,7 @@ GridMapBuilderMetrics::GridMapBuilderMetrics() :
     mNumOfScans(nullptr),
     mProcessFrame(nullptr),
     mEffectiveSampleSize(nullptr),
+    mPhysicalMemoryUsage(nullptr),
     mGridMapMemoryUsage(nullptr),
     mLatestMapMemoryUsage(nullptr),
     mTrajectoryMemoryUsage(nullptr)
@@ -85,6 +87,9 @@ GridMapBuilderMetrics::GridMapBuilderMetrics() :
     this->mEffectiveSampleSize = pMetricManager->AddValueSequence<float>(
         "GridMapBuilder.EffectiveSampleSize");
 
+    this->mPhysicalMemoryUsage =
+        pMetricManager->AddValueSequence<std::uint64_t>(
+            "GridMapBuilder.PhysicalMemoryUsage");
     this->mGridMapMemoryUsage =
         pMetricManager->AddValueSequence<std::uint64_t>(
             "GridMapBuilder.GridMapMemoryUsage");
@@ -303,6 +308,7 @@ bool GridMapBuilder::ProcessScan(
     this->mMetrics.mNumOfScans->Observe(scanData->NumOfScans());
     this->mMetrics.mProcessFrame->Observe(
         this->mMetrics.mInputScanDataCount->Value() - 1);
+    this->mMetrics.mPhysicalMemoryUsage->Observe(GetPhysicalMemoryUsage());
 
     /* Update miscellaneous parameters */
     this->mProcessCount += 1;

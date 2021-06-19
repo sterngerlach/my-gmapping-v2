@@ -70,6 +70,8 @@ struct GridMapBuilderMetrics
     Metric::ValueSequenceBase<int>*           mProcessFrame;
     /* Effective sample size */
     Metric::ValueSequenceBase<float>*         mEffectiveSampleSize;
+    /* Total physical memory usage in bytes */
+    Metric::ValueSequenceBase<std::uint64_t>* mPhysicalMemoryUsage;
     /* Total memory consumption for the particle grid maps */
     Metric::ValueSequenceBase<std::uint64_t>* mGridMapMemoryUsage;
     /* Total memory consumption for the latest grid maps */
