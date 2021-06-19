@@ -16,35 +16,80 @@ namespace Mapping {
 
 struct ScanMatcherCorrelativeMetrics
 {
+    /* `Times` struct holds the processing times for each particle */
+    struct Times
+    {
+        int mInputSetupTime;
+        int mOptimizationTime;
+    };
+
+    /* `Parameters` struct holds the parameter settings for each particle */
+    struct Parameters
+    {
+        /* Metric values related to the algorithmic parameters */
+        float mDiffTranslation;
+        float mDiffRotation;
+        int   mWinSizeX;
+        int   mWinSizeY;
+        int   mWinSizeTheta;
+        float mStepSizeX;
+        float mStepSizeY;
+        float mStepSizeTheta;
+        /* Metric values related to the algorithmic performances */
+        int   mNumOfIgnoredNodes;
+        int   mNumOfProcessedNodes;
+        /* Metric values related to the outputs */
+        float mScoreValue;
+        float mLikelihoodValue;
+        int   mNumOfScans;
+    };
+
     /* Constructor */
     ScanMatcherCorrelativeMetrics(const std::string& scanMatcherName);
     /* Destructor */
     ~ScanMatcherCorrelativeMetrics() = default;
 
+    /* Resize the buffer to store the processing times */
+    void Resize(const std::size_t numOfParticles);
+    /* Set the processing times for each particle */
+    void SetTimes(const std::size_t idx, const Times& times);
+    /* Set the parameter settings for each particle */
+    void SetParameters(const std::size_t idx, const Parameters& params);
+    /* Collect the particle-wise metrics and update the overall metrics */
+    void Update(const std::size_t bestIdx);
+
+    /* Processing times for all particles */
+    std::vector<Times>                mTimes;
+    /* Parameter settings for all particles */
+    std::vector<Parameters>           mParams;
+
     /* Total processing time for setting up the input */
-    Metric::DistributionBase*         mInputSetupTime;
+    Metric::ValueSequenceBase<int>*   mInputSetupTime;
     /* Total processing time for the optimization */
-    Metric::DistributionBase*         mOptimizationTime;
+    Metric::ValueSequenceBase<int>*   mOptimizationTime;
+
     /* Distance between the initial pose and the final pose */
-    Metric::DistributionBase*         mDiffTranslation;
+    Metric::ValueSequenceBase<float>* mDiffTranslation;
     /* Absolute difference between the initial angle and the final angle */
-    Metric::DistributionBase*         mDiffRotation;
+    Metric::ValueSequenceBase<float>* mDiffRotation;
     /* Size of the search window along the X-axis */
-    Metric::DistributionBase*         mWinSizeX;
+    Metric::ValueSequenceBase<int>*   mWinSizeX;
     /* Size of the search window along the Y-axis */
-    Metric::DistributionBase*         mWinSizeY;
+    Metric::ValueSequenceBase<int>*   mWinSizeY;
     /* Size of the search window along the Theta-axis */
-    Metric::DistributionBase*         mWinSizeTheta;
+    Metric::ValueSequenceBase<int>*   mWinSizeTheta;
     /* Step size along the X-axis */
-    Metric::DistributionBase*         mStepSizeX;
+    Metric::ValueSequenceBase<float>* mStepSizeX;
     /* Step size along the Y-axis */
-    Metric::DistributionBase*         mStepSizeY;
+    Metric::ValueSequenceBase<float>* mStepSizeY;
     /* Step size along the Theta-axis */
-    Metric::DistributionBase*         mStepSizeTheta;
+    Metric::ValueSequenceBase<float>* mStepSizeTheta;
+
     /* Total number of the skipped nodes */
-    Metric::CounterBase*              mNumOfIgnoredNodes;
+    Metric::ValueSequenceBase<int>*   mNumOfIgnoredNodes;
     /* Total number of the processed nodes */
-    Metric::CounterBase*              mNumOfProcessedNodes;
+    Metric::ValueSequenceBase<int>*   mNumOfProcessedNodes;
+
     /* Normalized score value of the best particle */
     Metric::ValueSequenceBase<float>* mScoreValue;
     /* Normalized likelihood value of the best particle */
@@ -58,6 +103,7 @@ class ScanMatcherCorrelative final : public ScanMatcher
 public:
     /* Type definitions */
     using LikelihoodFuncPtr = std::unique_ptr<LikelihoodFunction>;
+    using ScanMatcherMetrics = ScanMatcherCorrelativeMetrics;
 
     /* Constructor */
     ScanMatcherCorrelative(const std::string& scanMatcherName,
@@ -86,7 +132,8 @@ private:
         const GridMapInterface& coarseGridMap,
         const Sensor::ScanDataPtr<double>& scanData,
         const RobotPose2D<double>& initialPose,
-        const double normalizedScoreThreshold);
+        const double normalizedScoreThreshold,
+        ScanMatcherMetrics::Parameters& params);
 
     /* Compute the search step */
     void ComputeSearchStep(const GridMapInterface& gridMap,
@@ -128,25 +175,25 @@ private:
 
 private:
     /* Likelihood function to compute the observation likelihood */
-    LikelihoodFuncPtr             mLikelihoodFunc;
+    LikelihoodFuncPtr  mLikelihoodFunc;
     /* Flag to determine whether the grid map is cropped */
-    const bool                    mUseCroppedMap;
+    const bool         mUseCroppedMap;
     /* Width of the cropped grid map (in the number of grid cells) */
-    const int                     mCroppedMapSizeX;
+    const int          mCroppedMapSizeX;
     /* Height of the cropped grid map (in the number of grid cells) */
-    const int                     mCroppedMapSizeY;
+    const int          mCroppedMapSizeY;
     /* Resolution for low resolution map (in the number of grid cells) */
-    const int                     mLowResolution;
+    const int          mLowResolution;
     /* Width of the searching window (in meters) */
-    const double                  mRangeX;
+    const double       mRangeX;
     /* Height of the searching window (in meters) */
-    const double                  mRangeY;
+    const double       mRangeY;
     /* Angular range of the searching window (in radians) */
-    const double                  mRangeTheta;
+    const double       mRangeTheta;
     /* Maximum laser scan range considered for scan matching */
-    const double                  mScanRangeMax;
+    const double       mScanRangeMax;
     /* Metrics information */
-    ScanMatcherCorrelativeMetrics mMetrics;
+    ScanMatcherMetrics mMetrics;
 };
 
 } /* namespace Mapping */

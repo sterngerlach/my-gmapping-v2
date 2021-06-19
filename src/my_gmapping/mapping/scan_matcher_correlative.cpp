@@ -29,42 +29,106 @@ ScanMatcherCorrelativeMetrics::ScanMatcherCorrelativeMetrics(
     /* Retrieve the metrics manager instance */
     auto* const pMetricManager = Metric::MetricManager::Instance();
 
-    /* Register the counter metrics */
-    this->mNumOfIgnoredNodes = pMetricManager->AddCounter(
-        scanMatcherName + ".NumOfIgnoredNodes");
-    this->mNumOfProcessedNodes = pMetricManager->AddCounter(
-        scanMatcherName + ".NumOfProcessedNodes");
-
-    /* Register the distribution metrics */
-    this->mInputSetupTime = pMetricManager->AddDistribution(
+    /* Register the value sequence metrics */
+    this->mInputSetupTime = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".InputSetupTime");
-    this->mOptimizationTime = pMetricManager->AddDistribution(
+    this->mOptimizationTime = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".OptimizationTime");
-    this->mDiffTranslation = pMetricManager->AddDistribution(
-        scanMatcherName + ".DiffTranslation");
-    this->mDiffRotation = pMetricManager->AddDistribution(
-        scanMatcherName + ".DiffRotation");
 
-    this->mWinSizeX = pMetricManager->AddDistribution(
+    this->mDiffTranslation = pMetricManager->AddValueSequence<float>(
+        scanMatcherName + ".DiffTranslation");
+    this->mDiffRotation = pMetricManager->AddValueSequence<float>(
+        scanMatcherName + ".DiffRotation");
+    this->mWinSizeX = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".WinSizeX");
-    this->mWinSizeY = pMetricManager->AddDistribution(
+    this->mWinSizeY = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".WinSizeY");
-    this->mWinSizeTheta = pMetricManager->AddDistribution(
+    this->mWinSizeTheta = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".WinSizeTheta");
-    this->mStepSizeX = pMetricManager->AddDistribution(
+    this->mStepSizeX = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".StepSizeX");
-    this->mStepSizeY = pMetricManager->AddDistribution(
+    this->mStepSizeY = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".StepSizeY");
-    this->mStepSizeTheta = pMetricManager->AddDistribution(
+    this->mStepSizeTheta = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".StepSizeTheta");
 
-    /* Register the value sequence metrics */
+    this->mNumOfIgnoredNodes = pMetricManager->AddValueSequence<int>(
+        scanMatcherName + ".NumOfIgnoredNodes");
+    this->mNumOfProcessedNodes = pMetricManager->AddValueSequence<int>(
+        scanMatcherName + ".NumOfProcessedNodes");
+
     this->mScoreValue = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".ScoreValue");
     this->mLikelihoodValue = pMetricManager->AddValueSequence<float>(
         scanMatcherName + ".LikelihoodValue");
     this->mNumOfScans = pMetricManager->AddValueSequence<int>(
         scanMatcherName + ".NumOfScans");
+}
+
+/* Reserve the buffer to store the processing times */
+void ScanMatcherCorrelativeMetrics::Resize(
+    const std::size_t numOfParticles)
+{
+    this->mTimes.resize(numOfParticles);
+    this->mParams.resize(numOfParticles);
+}
+
+/* Set the processing times for each particle */
+void ScanMatcherCorrelativeMetrics::SetTimes(
+    const std::size_t idx, const Times& times)
+{
+    this->mTimes[idx] = times;
+}
+
+/* Set the parameter settings for each particle */
+void ScanMatcherCorrelativeMetrics::SetParameters(
+    const std::size_t idx, const Parameters& parameters)
+{
+    this->mParams[idx] = parameters;
+}
+
+/* Collect the particle-wise metrics and update the overall metrics */
+void ScanMatcherCorrelativeMetrics::Update(
+    const std::size_t bestIdx)
+{
+    auto collectTimes = [&](
+        std::function<int(int, const Times&)> selector) {
+        return std::accumulate(this->mTimes.begin(),
+                               this->mTimes.end(), 0, selector); };
+    auto collectParams = [&](
+        std::function<int(int, const Parameters&)> selector) {
+            return std::accumulate(this->mParams.begin(),
+                                   this->mParams.end(), 0, selector); };
+
+    /* Compute the sum of the processing times */
+    this->mInputSetupTime->Observe(collectTimes(
+        [](int value, const Times& times) {
+            return value + times.mInputSetupTime; }));
+    this->mOptimizationTime->Observe(collectTimes(
+        [](int value, const Times& times) {
+            return value + times.mOptimizationTime; }));
+
+    /* Store the metric values of the best particle */
+    const auto& bestParticle = this->mParams[bestIdx];
+    this->mDiffTranslation->Observe(bestParticle.mDiffTranslation);
+    this->mDiffRotation->Observe(bestParticle.mDiffRotation);
+    this->mWinSizeX->Observe(bestParticle.mWinSizeX);
+    this->mWinSizeY->Observe(bestParticle.mWinSizeY);
+    this->mWinSizeTheta->Observe(bestParticle.mWinSizeTheta);
+    this->mStepSizeX->Observe(bestParticle.mStepSizeX);
+    this->mStepSizeY->Observe(bestParticle.mStepSizeY);
+    this->mStepSizeTheta->Observe(bestParticle.mStepSizeTheta);
+    this->mScoreValue->Observe(bestParticle.mScoreValue);
+    this->mLikelihoodValue->Observe(bestParticle.mLikelihoodValue);
+    this->mNumOfScans->Observe(bestParticle.mNumOfScans);
+
+    /* Store the collected metric values */
+    this->mNumOfIgnoredNodes->Observe(collectParams(
+        [](int value, const Parameters& params) {
+            return value + params.mNumOfIgnoredNodes; }));
+    this->mNumOfProcessedNodes->Observe(collectParams(
+        [](int value, const Parameters& params) {
+            return value + params.mNumOfProcessedNodes; }));
 }
 
 /* Constructor */
@@ -101,11 +165,17 @@ ScanMatchingResultVector ScanMatcherCorrelative::OptimizePose(
     ScanMatchingResultVector results;
     results.resize(queries.size());
 
+    /* Resize the buffer to store the metrics for each particle */
+    this->mMetrics.Resize(queries.size());
+
     /* Optimize the pose for each particle (parallelized using OpenMP) */
 #pragma omp parallel for
     for (std::size_t i = 0; i < queries.size(); ++i) {
         /* Create the timer for each thread */
         Metric::Timer timer;
+        /* Metric values for each particle */
+        ScanMatcherMetrics::Times times;
+        ScanMatcherMetrics::Parameters params;
 
         const auto& initialPose = queries[i].mInitialPose;
         const auto& gridMap = queries[i].mGridMap;
@@ -156,16 +226,20 @@ ScanMatchingResultVector ScanMatcherCorrelative::OptimizePose(
                           intermediateMap, precompMap);
 
         /* Update the processing time for setting up the input */
-        this->mMetrics.mInputSetupTime->Observe(timer.ElapsedMicro());
+        times.mInputSetupTime = timer.ElapsedMicro();
         timer.Start();
 
         /* Optimize the particle pose based on the correlative scan matching */
-        results[i] = this->OptimizePoseCore(
-            gridMap, boundingBox, precompMap, scanData, initialPose, 0.0);
+        results[i] = this->OptimizePoseCore(gridMap, boundingBox, precompMap,
+                                            scanData, initialPose, 0.0, params);
 
         /* Update the processing time for the optimization */
-        this->mMetrics.mOptimizationTime->Observe(timer.ElapsedMicro());
+        times.mOptimizationTime = timer.ElapsedMicro();
         timer.Stop();
+
+        /* Set the metrics */
+        this->mMetrics.SetTimes(i, times);
+        this->mMetrics.SetParameters(i, params);
     }
 
     /* Determine the maximum likelihood value and its corresponding score */
@@ -173,13 +247,10 @@ ScanMatchingResultVector ScanMatcherCorrelative::OptimizePose(
         results.begin(), results.end(),
         [](const ScanMatchingResult& lhs, const ScanMatchingResult& rhs) {
             return lhs.mLikelihood < rhs.mLikelihood; });
+    const auto bestIdx = std::distance(results.begin(), bestIt);
 
-    /* Update the normalized score value of the best particle */
-    this->mMetrics.mScoreValue->Observe(bestIt->mNormalizedScore);
-    /* Update the normalized likelihood value of the best particle */
-    this->mMetrics.mLikelihoodValue->Observe(bestIt->mNormalizedLikelihood);
-    /* Update the number of the scan points */
-    this->mMetrics.mNumOfScans->Observe(scanData->NumOfScans());
+    /* Update the metrics */
+    this->mMetrics.Update(bestIdx);
 
     return results;
 }
@@ -191,7 +262,8 @@ ScanMatchingResult ScanMatcherCorrelative::OptimizePoseCore(
     const GridMapInterface& coarseGridMap,
     const Sensor::ScanDataPtr<double>& scanData,
     const RobotPose2D<double>& initialPose,
-    const double normalizedScoreThreshold)
+    const double normalizedScoreThreshold,
+    ScanMatcherMetrics::Parameters& params)
 {
     /* Find the best particle pose from the search window */
     /* Compute the sensor pose from the initial particle pose */
@@ -276,6 +348,8 @@ ScanMatchingResult ScanMatcherCorrelative::OptimizePoseCore(
     /* Compute the estimated robot pose and the likelihood value */
     const RobotPose2D<double> estimatedPose = MoveBackward(
         bestSensorPose, scanData->RelativeSensorPose());
+    const RobotPose2D<double> diffPose =
+        InverseCompound(initialPose, estimatedPose);
 
     /* Set the resulting likelihood */
     const double likelihood = this->mLikelihoodFunc->Likelihood(
@@ -285,19 +359,20 @@ ScanMatchingResult ScanMatcherCorrelative::OptimizePoseCore(
     const double score = scoreMax;
     const double normalizedScore = score / scanData->NumOfScans();
 
-    /* Update the distribution and counter metrics */
-    this->mMetrics.mDiffTranslation->Observe(
-        Distance(initialPose, estimatedPose));
-    this->mMetrics.mDiffRotation->Observe(
-        std::abs(initialPose.mTheta - estimatedPose.mTheta));
-    this->mMetrics.mWinSizeX->Observe(winX);
-    this->mMetrics.mWinSizeY->Observe(winY);
-    this->mMetrics.mWinSizeTheta->Observe(winTheta);
-    this->mMetrics.mStepSizeX->Observe(stepX);
-    this->mMetrics.mStepSizeY->Observe(stepY);
-    this->mMetrics.mStepSizeTheta->Observe(stepTheta);
-    this->mMetrics.mNumOfIgnoredNodes->Increment(numOfIgnoredNodes);
-    this->mMetrics.mNumOfProcessedNodes->Increment(numOfProcessedNodes);
+    /* Update the metrics */
+    params.mDiffTranslation = Distance(diffPose);
+    params.mDiffRotation = std::abs(diffPose.mTheta);
+    params.mWinSizeX = winX;
+    params.mWinSizeY = winY;
+    params.mWinSizeTheta = winTheta;
+    params.mStepSizeX = stepX;
+    params.mStepSizeY = stepY;
+    params.mStepSizeTheta = stepTheta;
+    params.mNumOfIgnoredNodes = numOfIgnoredNodes;
+    params.mNumOfProcessedNodes = numOfProcessedNodes;
+    params.mScoreValue = normalizedScore;
+    params.mLikelihoodValue = normalizedLikelihood;
+    params.mNumOfScans = scanData->NumOfScans();
 
     return ScanMatchingResult { initialPose, estimatedPose,
                                 normalizedLikelihood, likelihood,
