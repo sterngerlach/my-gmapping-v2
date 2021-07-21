@@ -22,6 +22,8 @@ LikelihoodGreedyEndpoint::LikelihoodGreedyEndpoint(
     mMaxUsableRange(maxUsableRange),
     mHitAndMissedCellDist(hitAndMissedCellDist),
     mOccupancyThreshold(occupancyThreshold),
+    mOccupancyThresholdValue(
+        GridMap::GridType::ProbabilityToValue(occupancyThreshold)),
     mGaussianSigma(gaussianSigma),
     mKernelSize(kernelSize),
     mLikelihoodScale(likelihoodScale),
@@ -39,7 +41,12 @@ double LikelihoodGreedyEndpoint::Likelihood(
     const Sensor::ScanDataPtr<double>& scanData,
     const RobotPose2D<double>& sensorPose)
 {
-    double likelihoodSum = 0.0;
+    /* Sum of the squared distances between hit points and
+     * their corresponding grid cells */
+    int distSquaredSum = 0;
+    /* Compute the maximum squared distance */
+    const int distSquaredMax =
+        2 * (this->mKernelSize + 1) * (this->mKernelSize + 1);
 
     const double minRange = std::max(
         this->mMinUsableRange, scanData->MinRange());
@@ -66,46 +73,45 @@ double LikelihoodGreedyEndpoint::Likelihood(
             gridMap.PositionToIndex(missedPoint.mX, missedPoint.mY);
 
         /* Search the best cell index from the window */
-        const double unknownProb = gridMap.UnknownProbability();
-        double likelihoodMax = this->mDefaultLikelihood;
+        const std::uint16_t unknownValue = gridMap.UnknownValue();
+        /* Initialize the minimum squared distance with the default value */
+        int distSquaredMin = distSquaredMax;
 
         for (int ky = -this->mKernelSize; ky <= this->mKernelSize; ++ky) {
             for (int kx = -this->mKernelSize; kx <= this->mKernelSize; ++kx) {
-                const double hitProb = gridMap.ProbabilityOr(
-                    hitIdx.mY + ky, hitIdx.mX + kx, unknownProb);
-                const double missProb = gridMap.ProbabilityOr(
-                    missedIdx.mY + ky, missedIdx.mX + kx, unknownProb);
+                const std::uint16_t hitValue = gridMap.ValueOr(
+                    hitIdx.mY + ky, hitIdx.mX + kx, unknownValue);
+                const std::uint16_t missedValue = gridMap.ValueOr(
+                    missedIdx.mY + ky, missedIdx.mX + kx, unknownValue);
 
-                /* Skip if cell contains unknown occupancy probability */
-                if (hitProb == unknownProb || missProb == unknownProb)
+                /* Skip if the grid cell is not observed yet */
+                if (hitValue == unknownValue || missedValue == unknownValue)
+                    continue;
+                /* Skip if the value of the hit grid cell is less than the
+                 * occupancy threshold or the value of the missed one is
+                 * greater than the occupancy threshold */
+                if (hitValue < this->mOccupancyThresholdValue ||
+                    missedValue > this->mOccupancyThresholdValue)
                     continue;
 
-                /* Skip if the occupancy probability of the cell
-                 * that is assumed to be hit is less than the threshold or
-                 * the occupancy probability of the missed cell is greater
-                 * than the threshold */
-                if (hitProb < this->mOccupancyThreshold ||
-                    missProb > this->mOccupancyThreshold)
-                    continue;
-
-                /* Retrieve the likelihood value using the lookup table */
-                const int idxX = this->mKernelSize + kx;
-                const int idxY = this->mKernelSize + ky;
-                const int tableIdx = idxY * (2 * this->mKernelSize + 1) + idxX;
-                const double likelihood = this->mLikelihoodTable[tableIdx];
-
-                /* Update the maximum likelihood value */
-                likelihoodMax = std::max(likelihoodMax, likelihood);
+                /* Compute the squared distance between the hit point and
+                 * its corresponding grid cell */
+                const int distSquared = kx * kx + ky * ky;
+                /* Update the minimum squared distance */
+                distSquaredMin = std::min(distSquaredMin, distSquared);
             }
         }
 
-        /* Add to the scan matching score value
-         * Score represents the log-likelihood of the observation */
-        likelihoodSum += likelihoodMax;
+        /* Update the sum of squared distances */
+        distSquaredSum += distSquaredMin;
     }
 
-    /* Scale the observation likelihood
-     * to prevent underflow in weight computation */
+    /* Compute the matching score from the sum of squared distances
+     * which represents the log-likelihood of the observation */
+    double likelihoodSum =
+        (-this->mMapResolution * this->mMapResolution * distSquaredSum) /
+        (0.5 * this->mGaussianSigma);
+    /* Scale the matching score to prevent underflow in weight computation */
     likelihoodSum *= this->mLikelihoodScale;
 
     return likelihoodSum;

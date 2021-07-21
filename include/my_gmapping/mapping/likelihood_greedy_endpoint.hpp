@@ -44,8 +44,10 @@ private:
     const double              mMaxUsableRange;
     /* Distance between the hit and the missed grid cell */
     const double              mHitAndMissedCellDist;
-    /* Occupancy probability threshold for being obstructed */
+    /* Threshold probability to determine whether the grid cell is occupied */
     const double              mOccupancyThreshold;
+    /* Threshold value to determine whether the grid cell is occupied */
+    const std::uint16_t       mOccupancyThresholdValue;
     /* Variance of the Gaussian distribution of the error */
     const double              mGaussianSigma;
     /* Size of the searching window (in the number of grid cells) */
