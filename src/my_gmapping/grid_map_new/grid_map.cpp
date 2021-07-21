@@ -298,54 +298,12 @@ void GridMap<T>::Release()
 template <typename T>
 void GridMap<T>::ResetValues()
 {
-    const auto resetValues = [](T& block) {
-        if (block.IsAllocated()) block.ResetValues(); };
-    this->ForEachBlock(resetValues);
-}
-
-/* Apply the function for each block */
-template <typename T>
-void GridMap<T>::ForEachBlock(std::function<void(T&)> func)
-{
     const int numOfBlocks = this->mBlockRows * this->mBlockCols;
-    T* blocks = this->mBlocks.get();
-    std::for_each(blocks, blocks + numOfBlocks, func);
-}
+    T* block = this->mBlocks.get();
 
-/* Apply the function to the grid cell */
-template <typename T>
-void GridMap<T>::Apply(const int row, const int col,
-                       std::function<void(T*, int, int)> func)
-{
-    const Point2D<int> blockIdx = this->IndexToBlock(row, col);
-    Assert(this->IsBlockInside(blockIdx.mY, blockIdx.mX));
-
-    const Point2D<int> blockOffset = this->IndexToBlockOffset(row, col);
-    T* block = this->Block(blockIdx.mY, blockIdx.mX);
-
-    /* Allocate and initialize the block if necessary */
-    if (!block->IsAllocated())
-        block->Initialize(this->mLog2BlockSize);
-
-    /* Apply the function to the grid cell */
-    func(block, blockOffset.mY, blockOffset.mX);
-}
-
-/* Apply the function to the grid cell (without checks) */
-template <typename T>
-void GridMap<T>::ApplyUnchecked(const int row, const int col,
-                                std::function<void(T*, int, int)> func)
-{
-    const Point2D<int> blockIdx = this->IndexToBlock(row, col);
-    const Point2D<int> blockOffset = this->IndexToBlockOffset(row, col);
-    T* block = this->Block(blockIdx.mY, blockIdx.mX);
-
-    /* Allocate and initialize the block if necessary */
-    if (!block->IsAllocated())
-        block->Initialize(this->mLog2BlockSize);
-
-    /* Apply the function to the grid cell */
-    func(block, blockOffset.mY, blockOffset.mX);
+    for (int i = 0; i < numOfBlocks; ++i, ++block)
+        if (block->IsAllocated())
+            block->ResetValues();
 }
 
 /* Copy the internal values to the buffer */
@@ -568,9 +526,17 @@ template <typename T>
 void GridMap<T>::SetValue(
     const int row, const int col, const typename T::ValueType value)
 {
-    const auto setValue = [value](T* block, int blockRow, int blockCol) {
-        block->SetValueUnchecked(blockRow, blockCol, value); };
-    this->Apply(row, col, setValue);
+    const Point2D<int> blockIdx = this->IndexToBlock(row, col);
+    Assert(this->IsBlockInside(blockIdx.mY, blockIdx.mX));
+
+    const Point2D<int> blockOffset = this->IndexToBlockOffset(row, col);
+    T* block = this->Block(blockIdx.mY, blockIdx.mX);
+
+    /* Allocate and initialize the block if necessary */
+    if (!block->IsAllocated())
+        block->Initialize(this->mLog2BlockSize);
+
+    block->SetValueUnchecked(blockOffset.mY, blockOffset.mX, value);
 }
 
 /* Set the internal value of the grid cell (without checks) */
@@ -578,9 +544,15 @@ template <typename T>
 void GridMap<T>::SetValueUnchecked(
     const int row, const int col, const typename T::ValueType value)
 {
-    const auto setValue = [value](T* block, int blockRow, int blockCol) {
-        block->SetValueUnchecked(blockRow, blockCol, value); };
-    this->ApplyUnchecked(row, col, setValue);
+    const Point2D<int> blockIdx = this->IndexToBlock(row, col);
+    const Point2D<int> blockOffset = this->IndexToBlockOffset(row, col);
+    T* block = this->Block(blockIdx.mY, blockIdx.mX);
+
+    /* Allocate and initialize the block if necessary */
+    if (!block->IsAllocated())
+        block->Initialize(this->mLog2BlockSize);
+
+    block->SetValueUnchecked(blockOffset.mY, blockOffset.mX, value);
 }
 
 /* Set the probability value of the grid cell */
@@ -588,9 +560,17 @@ template <typename T>
 void GridMap<T>::SetProbability(
     const int row, const int col, const typename T::ProbabilityType prob)
 {
-    const auto setProbability = [prob](T* block, int blockRow, int blockCol) {
-        block->SetProbabilityUnchecked(blockRow, blockCol, prob); };
-    this->Apply(row, col, setProbability);
+    const Point2D<int> blockIdx = this->IndexToBlock(row, col);
+    Assert(this->IsBlockInside(blockIdx.mY, blockIdx.mX));
+
+    const Point2D<int> blockOffset = this->IndexToBlockOffset(row, col);
+    T* block = this->Block(blockIdx.mY, blockIdx.mX);
+
+    /* Allocate and initialize the block if necessary */
+    if (!block->IsAllocated())
+        block->Initialize(this->mLog2BlockSize);
+
+    block->SetProbabilityUnchecked(blockOffset.mY, blockOffset.mX, prob);
 }
 
 /* Set the probability value of the grid cell (without checks) */
@@ -598,27 +578,39 @@ template <typename T>
 void GridMap<T>::SetProbabilityUnchecked(
     const int row, const int col, const typename T::ProbabilityType prob)
 {
-    const auto setProbability = [prob](T* block, int blockRow, int blockCol) {
-        block->SetProbabilityUnchecked(blockRow, blockCol, prob); };
-    this->ApplyUnchecked(row, col, setProbability);
+    const Point2D<int> blockIdx = this->IndexToBlock(row, col);
+    const Point2D<int> blockOffset = this->IndexToBlockOffset(row, col);
+    T* block = this->Block(blockIdx.mY, blockIdx.mX);
+
+    /* Allocate and initialize the block if necessary */
+    if (!block->IsAllocated())
+        block->Initialize(this->mLog2BlockSize);
+
+    block->SetProbabilityUnchecked(blockOffset.mY, blockOffset.mX, prob);
 }
 
 /* Fill all grid values with the given internal value */
 template <typename T>
 void GridMap<T>::FillValue(const typename T::ValueType value)
 {
-    const auto fillValue = [value](T& block) {
-        if (block.IsAllocated()) block.FillValue(value); };
-    this->ForEachBlock(fillValue);
+    const int numOfBlocks = this->mBlockRows * this->mBlockCols;
+    T* block = this->mBlocks.get();
+
+    for (int i = 0; i < numOfBlocks; ++i, ++block)
+        if (block->IsAllocated())
+            block->FillValue(value);
 }
 
 /* Fill all grid values with the given probability value */
 template <typename T>
 void GridMap<T>::FillProbability(const typename T::ProbabilityType prob)
 {
-    const auto fillProbability = [prob](T& block) {
-        if (block.IsAllocated()) block.FillProbability(prob); };
-    this->ForEachBlock(fillProbability);
+    const int numOfBlocks = this->mBlockRows * this->mBlockCols;
+    T* block = this->mBlocks.get();
+
+    for (int i = 0; i < numOfBlocks; ++i, ++block)
+        if (block->IsAllocated())
+            block->FillProbability(prob);
 }
 
 /* Update the grid value given an observation */
@@ -626,10 +618,17 @@ template <typename T>
 void GridMap<T>::Update(const int row, const int col,
                         const typename T::ObservationType observation)
 {
-    const auto updateFunc = [observation](
-        T* block, int blockRow, int blockCol) {
-            block->UpdateUnchecked(blockRow, blockCol, observation); };
-    this->Apply(row, col, updateFunc);
+    const Point2D<int> blockIdx = this->IndexToBlock(row, col);
+    Assert(this->IsBlockInside(blockIdx.mY, blockIdx.mX));
+
+    const Point2D<int> blockOffset = this->IndexToBlockOffset(row, col);
+    T* block = this->Block(blockIdx.mY, blockIdx.mX);
+
+    /* Allocate and initialize the block if necessary */
+    if (!block->IsAllocated())
+        block->Initialize(this->mLog2BlockSize);
+
+    block->UpdateUnchecked(blockOffset.mY, blockOffset.mX, observation);
 }
 
 /* Update the grid value given an observation (without input checks) */
@@ -637,10 +636,15 @@ template <typename T>
 void GridMap<T>::UpdateUnchecked(const int row, const int col,
                                  const typename T::ObservationType observation)
 {
-    const auto updateFunc = [observation](
-        T* block, int blockRow, int blockCol) {
-            block->UpdateUnchecked(blockRow, blockCol, observation); };
-    this->ApplyUnchecked(row, col, updateFunc);
+    const Point2D<int> blockIdx = this->IndexToBlock(row, col);
+    const Point2D<int> blockOffset = this->IndexToBlockOffset(row, col);
+    T* block = this->Block(blockIdx.mY, blockIdx.mX);
+
+    /* Allocate and initialize the block if necessary */
+    if (!block->IsAllocated())
+        block->Initialize(this->mLog2BlockSize);
+
+    block->UpdateUnchecked(blockOffset.mY, blockOffset.mX, observation);
 }
 
 /* Update the grid value given an odds */
