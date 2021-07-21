@@ -32,32 +32,24 @@ public:
         const RobotPose2D<double>& sensorPose) override;
 
 private:
-    /* Setup the lookup table for the likelihood value */
-    void SetupLookupTable();
-
-private:
     /* Grid map resolution (in meters) */
-    const double              mMapResolution;
+    const double        mMapResolution;
     /* Minimum laser scan range considered for calculation */
-    const double              mMinUsableRange;
+    const double        mMinUsableRange;
     /* Maximum laser scan range considered for calculation */
-    const double              mMaxUsableRange;
+    const double        mMaxUsableRange;
     /* Distance between the hit and the missed grid cell */
-    const double              mHitAndMissedCellDist;
+    const double        mHitAndMissedCellDist;
     /* Threshold probability to determine whether the grid cell is occupied */
-    const double              mOccupancyThreshold;
+    const double        mOccupancyThreshold;
     /* Threshold value to determine whether the grid cell is occupied */
-    const std::uint16_t       mOccupancyThresholdValue;
+    const std::uint16_t mOccupancyThresholdValue;
     /* Variance of the Gaussian distribution of the error */
-    const double              mGaussianSigma;
+    const double        mGaussianSigma;
     /* Size of the searching window (in the number of grid cells) */
-    const int                 mKernelSize;
+    const int           mKernelSize;
     /* Scaling factor for the likelihood value */
-    const double              mLikelihoodScale;
-    /* Lookup table for the likelihood value */
-    std::unique_ptr<double[]> mLikelihoodTable;
-    /* Minimum likelihood value */
-    double                    mDefaultLikelihood;
+    const double        mLikelihoodScale;
 };
 
 } /* namespace Mapping */

@@ -26,12 +26,8 @@ LikelihoodGreedyEndpoint::LikelihoodGreedyEndpoint(
         GridMap::GridType::ProbabilityToValue(occupancyThreshold)),
     mGaussianSigma(gaussianSigma),
     mKernelSize(kernelSize),
-    mLikelihoodScale(likelihoodScale),
-    mLikelihoodTable(nullptr),
-    mDefaultLikelihood(0.0)
+    mLikelihoodScale(likelihoodScale)
 {
-    /* Compute the lookup table for the likelihood value */
-    this->SetupLookupTable();
 }
 
 /* Calculate observation likelihood based on squared distance
@@ -115,42 +111,6 @@ double LikelihoodGreedyEndpoint::Likelihood(
     likelihoodSum *= this->mLikelihoodScale;
 
     return likelihoodSum;
-}
-
-/* Setup the lookup table for the likelihood value */
-void LikelihoodGreedyEndpoint::SetupLookupTable()
-{
-    /* Allocate the lookup table */
-    const int kernelSize = 2 * this->mKernelSize + 1;
-    this->mLikelihoodTable.reset(new double[kernelSize * kernelSize]);
-
-    /* Compute the likelihood values in the lookup table */
-    for (int ky = -this->mKernelSize; ky <= this->mKernelSize; ++ky) {
-        for (int kx = -this->mKernelSize; kx <= this->mKernelSize; ++kx) {
-            /* Compute the squared distance using the offsets `kx` and `ky` */
-            const double diffX = this->mMapResolution * kx;
-            const double diffY = this->mMapResolution * ky;
-            const double squaredDist = diffX * diffX + diffY * diffY;
-
-            /* Compute the negative log-likelihood of the observation */
-            const double likelihoodValue =
-                -squaredDist / (0.5 * this->mGaussianSigma);
-
-            /* Set the likelihood value to the lookup table */
-            const int idxX = this->mKernelSize + kx;
-            const int idxY = this->mKernelSize + ky;
-            const int tableIdx = idxY * kernelSize + idxX;
-            this->mLikelihoodTable[tableIdx] = likelihoodValue;
-        }
-    }
-
-    /* Compute the default likelihood value */
-    const double maxDiffX = this->mMapResolution * (this->mKernelSize + 1);
-    const double maxDiffY = this->mMapResolution * (this->mKernelSize + 1);
-    const double maxSquaredDist = maxDiffX * maxDiffX + maxDiffY * maxDiffY;
-
-    /* Compute the negative log-likelihood of the observation */
-    this->mDefaultLikelihood = -maxSquaredDist / (0.5 * this->mGaussianSigma);
 }
 
 } /* namespace Mapping */
