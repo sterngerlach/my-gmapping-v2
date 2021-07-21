@@ -77,12 +77,14 @@ private:
     const double mMaxUsableRange;
     /* Minimum scan range considered to be valid */
     const double mMinUsableRange;
-    /* Occupancy probability value for hit grid cell
-     * Used for updating the value with Binary Bayes Filter */
+    /* Probability for hit grid cells */
     const double mProbHit;
-    /* Occupancy probability value for missed grid cell
-     * Used for updating the value with Binary Bayes Filter */
+    /* Probability for missed grid cells */
     const double mProbMiss;
+    /* Odds for hit grid cells */
+    const double mOddsHit;
+    /* Odds for missed grid cells */
+    const double mOddsMiss;
 };
 
 } /* namespace Mapping */

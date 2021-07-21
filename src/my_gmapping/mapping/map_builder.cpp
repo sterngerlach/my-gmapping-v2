@@ -16,7 +16,9 @@ MapBuilder::MapBuilder(const double maxUsableRange,
     mMaxUsableRange(maxUsableRange),
     mMinUsableRange(minUsableRange),
     mProbHit(probHit),
-    mProbMiss(probMiss)
+    mProbMiss(probMiss),
+    mOddsHit(GridMap::GridType::ProbabilityToOdds(probHit)),
+    mOddsMiss(GridMap::GridType::ProbabilityToOdds(probMiss))
 {
     XAssert(minUsableRange >= 0.0,
             "The minimum range of the laser scan that is considered valid "
@@ -119,15 +121,10 @@ void MapBuilder::UpdateGridMap(
         this->ComputeMissedIndicesScaled(scaledSensorIdx, scaledHitIdx,
                                          SubpixelScale, missedIndices);
 
-        /* Update the cell value */
-        const std::size_t numOfMissedCells = missedIndices.size();
-
-        for (std::size_t j = 0; j < numOfMissedCells; ++j)
-            gridMap.Update(missedIndices[j].mY,
-                           missedIndices[j].mX,
-                           this->mProbMiss);
-
-        gridMap.Update(hitIdx.mY, hitIdx.mX, this->mProbHit);
+        /* Update missed grid cells */
+        gridMap.UpdateOddsUnchecked(missedIndices, this->mOddsMiss);
+        /* Update hit grid cell */
+        gridMap.UpdateOddsUnchecked(hitIdx.mY, hitIdx.mX, this->mOddsHit);
     }
 }
 
@@ -237,16 +234,10 @@ void MapBuilder::UpdateLatestMap(
             this->ComputeMissedIndicesScaled(scaledSensorIdx, scaledHitIdx,
                                              SubpixelScale, missedIndices);
 
-            /* Update the missed grid cells */
-            const std::size_t numOfMissedCells = missedIndices.size();
-
-            for (std::size_t k = 0; k < numOfMissedCells; ++k)
-                latestMap.Update(missedIndices[k].mY,
-                                 missedIndices[k].mX,
-                                 this->mProbMiss);
-
-            /* Update the hit grid cell */
-            latestMap.Update(hitIdx.mY, hitIdx.mX, this->mProbHit);
+            /* Update missed grid cells */
+            latestMap.UpdateOddsUnchecked(missedIndices, this->mOddsMiss);
+            /* Update hit grid cell */
+            latestMap.UpdateOddsUnchecked(hitIdx.mY, hitIdx.mX, this->mOddsHit);
         }
     }
 }
