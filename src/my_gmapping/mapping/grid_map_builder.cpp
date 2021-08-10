@@ -123,6 +123,7 @@ GridMapBuilder::GridMapBuilder(
     const double degenerationThreshold) :
     mProcessCount(0),
     mResolution(mapCellSize),
+    mBlockSize(1 << 4),
     mMotionModel(std::move(motionModel)),
     mLikelihoodFunc(std::move(likelihoodFunc)),
     mScanMatcher(std::move(scanMatcher)),
@@ -134,6 +135,7 @@ GridMapBuilder::GridMapBuilder(
     mRandEngine(std::random_device()()),
     mUseLatestMap(useLatestMap),
     mNumOfScansForLatestMap(numOfScansForLatestMap),
+    mLatestScan(nullptr),
     mLastOdomPose(0.0, 0.0, 0.0),
     mAccumulatedTravelDist(0.0),
     mAccumulatedAngle(0.0),
@@ -245,13 +247,15 @@ bool GridMapBuilder::ProcessScan(
 
     /* Initialize the grid map and adjust the positional offset */
     if (isFirstScan) {
+        const int initialRows = this->mBlockSize;
+        const int initialCols = this->mBlockSize;
+
         for (auto& particle : this->mParticles) {
-            const int blockSize = 1 << 4;
             particle.mMap.Initialize(
-                this->mResolution, blockSize, blockSize, blockSize,
+                this->mResolution, this->mBlockSize, initialRows, initialCols,
                 particle.mPose.mX, particle.mPose.mY);
             particle.mLatestMap.Initialize(
-                this->mResolution, blockSize, blockSize, blockSize,
+                this->mResolution, this->mBlockSize, initialRows, initialCols,
                 particle.mPose.mX, particle.mPose.mY);
         }
     }
@@ -263,6 +267,8 @@ bool GridMapBuilder::ProcessScan(
     /* Interpolate scan data if necessary */
     auto scanData = (this->mScanInterpolator != nullptr) ?
         this->mScanInterpolator->Interpolate(rawScanData) : rawScanData;
+    /* Store the latest scan */
+    this->mLatestScan = scanData;
 
     /* Update the total processing time for setting up the scan data */
     this->mMetrics.mScanDataSetupTime->Observe(timer.ElapsedMicro());
@@ -376,6 +382,65 @@ std::vector<RobotPose2D<double>> GridMapBuilder::ParticleTrajectory(
                  std::end(particleTrajectory));
 
     return particleTrajectory;
+}
+
+/* Get the poses of the best particle */
+std::vector<Network::TimedPose2D> GridMapBuilder::GetPoses() const
+{
+    const auto bestParticleIdx = this->BestParticleIndex();
+    const auto& particle = this->mParticles[bestParticleIdx];
+    auto nodePtr = particle.mNode;
+
+    std::vector<Network::TimedPose2D> robotPoses;
+
+    /* Copy the robot poses */
+    while (nodePtr != nullptr) {
+        Network::TimedPose2D robotPose;
+        robotPose.mTime = nodePtr->TimeStamp();
+        robotPose.mPose = nodePtr->Pose();
+        robotPoses.push_back(std::move(robotPose));
+        nodePtr = nodePtr->Parent();
+    }
+
+    /* Reverse the poses so that the first pose comes at first */
+    std::reverse(std::begin(robotPoses), std::end(robotPoses));
+
+    return robotPoses;
+}
+
+/* Get the latest scan */
+Network::Scan2D GridMapBuilder::GetLatestScan() const
+{
+    /* Copy the latest scan */
+    Network::Scan2D latestScan;
+    latestScan.mTime = this->mLatestScan->TimeStamp();
+    latestScan.mSensorPose = this->mLatestScan->RelativeSensorPose();
+    latestScan.mMinRange = this->mLatestScan->MinRange();
+    latestScan.mMaxRange = this->mLatestScan->MaxRange();
+    latestScan.mMinAngle = this->mLatestScan->MinAngle();
+    latestScan.mMaxAngle = this->mLatestScan->MaxAngle();
+    latestScan.mRanges = this->mLatestScan->Ranges();
+    latestScan.mAngles = this->mLatestScan->Angles();
+
+    return latestScan;
+}
+
+/* Get the grid map parameters */
+Network::GridMapParams GridMapBuilder::GetGridMapParams() const
+{
+    /* Copy the grid map parameters */
+    Network::GridMapParams params;
+    params.mResolution = this->mResolution;
+    params.mBlockSize = this->mBlockSize;
+    params.mSubpixelScale = this->mMapBuilder.RayCastingSubpixelScale();
+    params.mMinRange = this->mMapBuilder.MinRange();
+    params.mMaxRange = this->mMapBuilder.MaxRange();
+    params.mProbabilityHit = this->mMapBuilder.ProbabilityHit();
+    params.mProbabilityMiss = this->mMapBuilder.ProbabilityMiss();
+    params.mOddsHit = this->mMapBuilder.OddsHit();
+    params.mOddsMiss = this->mMapBuilder.OddsMiss();
+
+    return params;
 }
 
 /* Update the deque that stores the latest scan data */

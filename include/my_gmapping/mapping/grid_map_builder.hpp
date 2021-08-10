@@ -22,6 +22,7 @@
 #include "my_gmapping/mapping/trajectory_node.hpp"
 #include "my_gmapping/mapping/weight_normalizer.hpp"
 #include "my_gmapping/metric/metric.hpp"
+#include "my_gmapping/network/data_types.hpp"
 #include "my_gmapping/sensor/sensor_data.hpp"
 
 namespace MyGMapping {
@@ -84,6 +85,7 @@ class GridMapBuilder
 {
 public:
     /* Type definition */
+    using ScanDataPtr = Sensor::ScanDataPtr<double>;
     using ScanDataDeque = std::deque<Sensor::ScanDataPtr<double>>;
 
     /* Constructor */
@@ -144,6 +146,13 @@ public:
     std::vector<RobotPose2D<double>> ParticleTrajectory(
         std::size_t particleIdx) const;
 
+    /* Get the poses of the best particle */
+    std::vector<Network::TimedPose2D> GetPoses() const;
+    /* Get the latest scan */
+    Network::Scan2D GetLatestScan() const;
+    /* Get the grid map parameters */
+    Network::GridMapParams GetGridMapParams() const;
+
 private:
     /* Execute scan matching and update particle weights */
     void ExecuteScanMatching(const Sensor::ScanDataPtr<double>& scanData);
@@ -175,8 +184,10 @@ private:
 private:
     /* Total number of the processed input data */
     int                     mProcessCount;
-    /* Resolution of the grid map */
+    /* Grid map resolution (in meters) */
     const double            mResolution;
+    /* Grid block size (in the number of grid cells) */
+    const int               mBlockSize;
     /* Collection of the particles */
     std::vector<Particle>   mParticles;
     /* Motion model to sample the particle poses using the odometry */
@@ -206,6 +217,8 @@ private:
     std::size_t             mNumOfScansForLatestMap;
     /* Deque of the latest scan data for constructing the latest map */
     ScanDataDeque           mLatestScanData;
+    /* Latest scan data */
+    ScanDataPtr             mLatestScan;
 
     /* Last odometry pose */
     RobotPose2D<double>     mLastOdomPose;
