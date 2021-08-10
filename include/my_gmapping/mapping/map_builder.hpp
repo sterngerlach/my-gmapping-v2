@@ -68,6 +68,21 @@ public:
         const int subpixelScale,
         std::vector<Point2D<int>>& missedIndices) const;
 
+    /* Get the subpixel scale used when computing missed grid cell indices */
+    inline int RayCastingSubpixelScale() const { return SubpixelScale; }
+    /* Get the minimum scan range considered valid when creating a grid map */
+    inline double MinRange() const { return this->mMinUsableRange; }
+    /* Get the maximum scan range considered valid when creating a grid map */
+    inline double MaxRange() const { return this->mMaxUsableRange; }
+    /* Get the probability for hit grid cells */
+    inline double ProbabilityHit() const { return this->mProbHit; }
+    /* Get the probability for missed grid cells */
+    inline double ProbabilityMiss() const { return this->mProbMiss; }
+    /* Get the odds for hit grid cells */
+    inline double OddsHit() const { return this->mOddsHit; }
+    /* Get the odds for missed grid cells */
+    inline double OddsMiss() const { return this->mOddsMiss; }
+
 private:
     /* Subpixel scale for computing the missed grid cell indices */
     static constexpr int SubpixelScale = 100;
