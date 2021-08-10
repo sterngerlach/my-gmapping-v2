@@ -1,6 +1,7 @@
 
 /* slam_launcher.cpp */
 
+#include <cstdarg>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -34,6 +35,7 @@
 #include "my_gmapping/mapping/scan_matcher_hill_climbing.hpp"
 #include "my_gmapping/mapping/weight_normalizer.hpp"
 #include "my_gmapping/metric/metric.hpp"
+#include "my_gmapping/network/slam_client.hpp"
 #include "my_gmapping/sensor/sensor_data.hpp"
 
 using namespace MyGMapping;
@@ -528,11 +530,19 @@ void LoadCarmenLog(const fs::path& logFilePath,
     logFile.close();
 }
 
-/* Struct to store GUI (gnuplot) settings */
+/* GuiSettings struct stores configurations for GUI (gnuplot) window */
 struct GuiSettings
 {
     bool mEnabled;
     int  mDrawFrameInterval;
+};
+
+/* ClientSettings struct stores configurations for TCP client */
+struct ClientSettings
+{
+    bool          mEnabled;
+    std::string   mServerAddress;
+    std::uint16_t mServerPort;
 };
 
 /* Load the bitstream file to enable the hardware acceleration */
@@ -587,33 +597,106 @@ bool LoadSettings(const fs::path& settingsFilePath,
     return true;
 }
 
+/* Load TCP client settings */
+bool LoadClientSettings(const fs::path& settingsFilePath,
+                        ClientSettings& clientSettings)
+{
+    pt::ptree jsonSettings;
+    pt::read_json(settingsFilePath, jsonSettings);
+
+    clientSettings.mEnabled =
+        jsonSettings.get<bool>("Enabled");
+    clientSettings.mServerAddress =
+        jsonSettings.get<std::string>("Server.Address");
+    clientSettings.mServerPort =
+        jsonSettings.get<std::uint16_t>("Server.Port");
+
+    return true;
+}
+
+/* Exit when function failed */
+void ExitOnFail(const bool predicate, const char* errorMessage, ...)
+{
+    if (predicate)
+        return;
+
+    va_list args0;
+    va_list args1;
+    va_start(args0, errorMessage);
+    va_copy(args1, args0);
+
+    std::vector<char> buffer;
+    buffer.resize(std::vsnprintf(nullptr, 0, errorMessage, args0) + 1);
+    std::vsnprintf(buffer.data(), buffer.size(), errorMessage, args1);
+
+    va_end(args0);
+    va_end(args1);
+
+    std::cerr << buffer.data() << '\n';
+    std::exit(EXIT_FAILURE);
+}
+
 int main(int argc, char** argv)
 {
-    if (argc < 3) {
+    if (argc != 4 && argc != 5) {
         std::cerr << "Usage: " << argv[0] << ' '
-                  << "<Carmen log file name>" << ' '
-                  << "<Settings file name>" << ' '
-                  << "[Output name]" << std::endl;
+                  << "<Carmen Log File Name> "
+                  << "<Launcher Settings File Name> "
+                  << "<Client Settings File Name> "
+                  << "[Output Name]" << '\n';
         return EXIT_FAILURE;
     }
 
-    fs::path settingsFilePath { argv[2] };
-    fs::path logFilePath { argv[1] };
-    fs::path outputFilePath = (argc == 4) ? argv[3] : logFilePath.stem();
+    const fs::path logFilePath { argv[1] };
+    const fs::path settingsPath { argv[2] };
+    const fs::path clientSettingsPath { argv[3] };
+
+    /* Determine the output file name */
+    const bool outputNameSpecified = argc == 5 &&
+                                     std::strlen(argv[4]) != 0 &&
+                                     std::strncmp(argv[4], ".", 1) != 0 &&
+                                     std::strncmp(argv[4], "..", 2) != 0;
+    const bool logFileNameValid = logFilePath.has_stem() &&
+                                  logFilePath.stem() != "." &&
+                                  logFilePath.stem() != "..";
+
+    ExitOnFail(outputNameSpecified || logFileNameValid,
+               "Output name is invalid");
+
+    const fs::path outputFilePath = outputNameSpecified ? argv[4] :
+                                    logFileNameValid ? logFilePath.stem() : "";
 
     /* Load Carmen log file */
     std::vector<Sensor::SensorDataPtr> logData;
     LoadCarmenLog(logFilePath, logData);
-
-    if (logData.empty())
-        return EXIT_FAILURE;
+    ExitOnFail(!logData.empty(), "Carmen log file is empty");
 
     /* Load settings from json file */
     std::shared_ptr<Mapping::GridMapBuilder> pMapBuilder;
     GuiSettings guiSettings;
+    ClientSettings clientSettings;
 
-    if (!LoadSettings(settingsFilePath, pMapBuilder, guiSettings))
-        return EXIT_FAILURE;
+    ExitOnFail(LoadSettings(settingsPath, pMapBuilder, guiSettings),
+               "Failed to load launcher settings");
+    ExitOnFail(LoadClientSettings(clientSettingsPath, clientSettings),
+               "Failed to load client settings");
+
+    /* Setup TCP client */
+    auto pSlamClient = clientSettings.mEnabled ?
+        std::make_unique<Network::SlamClient>(
+            clientSettings.mServerAddress,
+            clientSettings.mServerPort) : nullptr;
+
+    if (clientSettings.mEnabled)
+        ExitOnFail(pSlamClient->ConnectToServer(),
+                   "Failed to connect to a server");
+
+    /* Transfer the grid map parameters */
+    const auto gridMapParams = pMapBuilder->GetGridMapParams();
+
+    if (clientSettings.mEnabled)
+        ExitOnFail(pSlamClient->SendGridMapParams(gridMapParams),
+                   "Failed to transfer grid map parameters to a server");
 
     /* Setup gnuplot helper */
     auto gnuplotHelper = guiSettings.mEnabled ?
@@ -630,21 +713,36 @@ int main(int argc, char** argv)
         const bool mapUpdated = pMapBuilder->ProcessScan(
             scanData, scanData->OdomPose());
 
-        if (!guiSettings.mEnabled || !mapUpdated)
-            continue;
-        if (pMapBuilder->ProcessCounter() %
-            guiSettings.mDrawFrameInterval != 0)
+        if (!mapUpdated)
             continue;
 
-        /* Get the trajectory of the best particle */
-        const std::size_t bestParticleIdx =
-            pMapBuilder->BestParticleIndex();
-        const auto bestParticleTrajectory =
-            pMapBuilder->ParticleTrajectoryWithTimeStamp(bestParticleIdx);
+        /* Send the robot poses and scans to server */
+        if (clientSettings.mEnabled) {
+            const auto robotPoses = pMapBuilder->GetPoses();
+            const auto latestScan = pMapBuilder->GetLatestScan();
+            ExitOnFail(pSlamClient->SendPoseArray(robotPoses),
+                       "Failed to send robot poses to a server");
+            ExitOnFail(pSlamClient->SendScan(latestScan),
+                       "Failed to send the latest scan to a server");
+        }
 
         /* Draw the trajectory of the best particle */
-        gnuplotHelper->DrawParticleTrajectory(bestParticleTrajectory);
+        if (guiSettings.mEnabled &&
+            (pMapBuilder->ProcessCounter() %
+             guiSettings.mDrawFrameInterval) == 0) {
+            /* Get the trajectory of the best particle */
+            const std::size_t bestParticleIdx =
+                pMapBuilder->BestParticleIndex();
+            const auto bestParticleTrajectory =
+                pMapBuilder->ParticleTrajectoryWithTimeStamp(bestParticleIdx);
+            /* Draw the trajectory of the best particle */
+            gnuplotHelper->DrawParticleTrajectory(bestParticleTrajectory);
+        }
     }
+
+    if (clientSettings.mEnabled)
+        ExitOnFail(pSlamClient->DisconnectFromServer(),
+                   "Failed to disconnect from a server");
 
     /* Save the map of the best particle */
     const std::size_t bestParticleIdx = pMapBuilder->BestParticleIndex();
